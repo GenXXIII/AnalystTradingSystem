@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/backend/">
+    <Project Path="backend/XauAi.Api/XauAi.Api.csproj" />
+    <Project Path="backend/XauAi.Application/XauAi.Application.csproj" />
+    <Project Path="backend/XauAi.Domain/XauAi.Domain.csproj" />
+    <Project Path="backend/XauAi.Infrastructure/XauAi.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/XauAi.ArchitectureTests/XauAi.ArchitectureTests.csproj" />
+    <Project Path="tests/XauAi.IntegrationTests/XauAi.IntegrationTests.csproj" />
+    <Project Path="tests/XauAi.UnitTests/XauAi.UnitTests.csproj" />
+  </Folder>
+</Solution>

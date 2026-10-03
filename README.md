@@ -1,5 +1,7 @@
 # XAUUSD AI Analyst Trading System
 
+[![CI](https://github.com/GenXXIII/AnalystTradingSystem/actions/workflows/ci.yml/badge.svg)](https://github.com/GenXXIII/AnalystTradingSystem/actions/workflows/ci.yml)
+
 This repository is an independent analyst application for XAUUSD. The web
 console, application workflows, normalized data contracts, persistence,
 analysis rules, audit trail, and future signal validation belong to this
@@ -174,3 +176,17 @@ npm run build
 Database, live MT5, live NewsData, and live FRED tests are opt-in. Their setup is
 documented in [provider boundaries](docs/architecture/provider-integrations.md)
 and [news collection](docs/news-collection.md).
+
+## Continuous integration
+
+The [GitHub Actions workflow](.github/workflows/ci.yml) validates the complete
+repository on pushes to `main`, pull requests, and manual runs. It performs the
+Release build, unit and architecture tests, formatting and EF migration checks,
+SQL Server-backed integration tests, frontend lint/build, and a clean Docker
+Compose smoke test for SQL Server, Redis, the API, and the web application.
+
+Normal CI never calls paid or credentialed external providers. Manual workflow
+runs can opt into the live FRED or NewsData.io integration tests after the
+corresponding `FRED_API_KEY` or `NEWS_API_KEY` repository secret is configured.
+The live MT5 test remains local because it requires the installed Windows MT5
+terminal and broker session.

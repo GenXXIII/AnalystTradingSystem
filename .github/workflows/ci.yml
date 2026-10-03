@@ -1,0 +1,232 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_live_fred:
+        description: Run the opt-in live FRED integration test
+        required: false
+        default: false
+        type: boolean
+      run_live_newsdata:
+        description: Run the opt-in live NewsData.io integration test
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_NOLOGO: "true"
+  NUGET_XMLDOC_MODE: skip
+
+jobs:
+  backend:
+    name: Backend quality and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Restore .NET dependencies and tools
+        run: |
+          dotnet restore XauAi.slnx
+          dotnet tool restore
+
+      - name: Build backend solution
+        run: dotnet build XauAi.slnx --configuration Release --no-restore
+
+      - name: Run unit tests
+        run: dotnet test tests/XauAi.UnitTests --configuration Release --no-build
+
+      - name: Run architecture tests
+        run: dotnet test tests/XauAi.ArchitectureTests --configuration Release --no-build
+
+      - name: Verify formatting
+        run: dotnet format XauAi.slnx --verify-no-changes --severity warn --no-restore
+
+      - name: Verify EF Core model matches migrations
+        run: >-
+          dotnet tool run dotnet-ef migrations has-pending-model-changes
+          --configuration Release
+          --no-build
+          --project backend/XauAi.Infrastructure/XauAi.Infrastructure.csproj
+          --startup-project backend/XauAi.Infrastructure/XauAi.Infrastructure.csproj
+          --context XauAiDbContext
+
+  integration:
+    name: SQL Server integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SQLSERVER_PORT: "14333"
+      FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+      NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Create ephemeral database credentials
+        run: |
+          sa_password="Aa1!$(openssl rand -hex 20)"
+          app_password="Bb2@$(openssl rand -hex 20)"
+          echo "::add-mask::$sa_password"
+          echo "::add-mask::$app_password"
+          {
+            echo "MSSQL_SA_PASSWORD=$sa_password"
+            echo "DATABASE_APP_PASSWORD=$app_password"
+            echo "XAUAI_TEST_SQLSERVER_CONNECTION_STRING=Server=localhost,14333;Database=master;User Id=sa;Password=$sa_password;TrustServerCertificate=True;Encrypt=True"
+          } >> "$GITHUB_ENV"
+
+      - name: Restore and build integration tests
+        run: |
+          dotnet restore tests/XauAi.IntegrationTests/XauAi.IntegrationTests.csproj
+          dotnet build tests/XauAi.IntegrationTests/XauAi.IntegrationTests.csproj --configuration Release --no-restore
+
+      - name: Start SQL Server
+        run: docker compose up -d --wait --wait-timeout 180 sqlserver
+
+      - name: Run all deterministic integration tests
+        run: dotnet test tests/XauAi.IntegrationTests --configuration Release --no-build
+
+      - name: Require configured FRED secret
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_live_fred }}
+        run: test -n "$FRED_API_KEY" || { echo "::error::Add the FRED_API_KEY repository secret."; exit 1; }
+
+      - name: Run live FRED integration test
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_live_fred }}
+        env:
+          XAUAI_RUN_FRED_INTEGRATION: "true"
+        run: >-
+          dotnet test tests/XauAi.IntegrationTests
+          --configuration Release
+          --no-build
+          --filter FullyQualifiedName~FredLiveIntegrationTests
+
+      - name: Require configured NewsData.io secret
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_live_newsdata }}
+        run: test -n "$NEWS_API_KEY" || { echo "::error::Add the NEWS_API_KEY repository secret."; exit 1; }
+
+      - name: Run live NewsData.io integration test
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_live_newsdata }}
+        env:
+          XAUAI_RUN_NEWSDATA_INTEGRATION: "true"
+        run: >-
+          dotnet test tests/XauAi.IntegrationTests
+          --configuration Release
+          --no-build
+          --filter FullyQualifiedName~NewsDataLiveIntegrationTests
+
+      - name: Show SQL Server logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 200 sqlserver
+
+      - name: Stop SQL Server
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+
+  frontend:
+    name: Frontend lint and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend/xau-ai-web
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/xau-ai-web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Build frontend
+        run: npm run build
+
+  docker-smoke:
+    name: Docker Compose smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SQLSERVER_PORT: "14333"
+      REDIS_PORT: "6380"
+      API_PORT: "5081"
+      WEB_PORT: "3001"
+      MT5_ENABLED: "false"
+      MARKET_DATA_SYNC_ENABLED: "false"
+      NEWS_ENABLED: "false"
+      ECONOMIC_DATA_ENABLED: "false"
+      AI_ENABLED: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Create ephemeral database credentials
+        run: |
+          sa_password="Cc3!$(openssl rand -hex 20)"
+          app_password="Dd4@$(openssl rand -hex 20)"
+          echo "::add-mask::$sa_password"
+          echo "::add-mask::$app_password"
+          {
+            echo "MSSQL_SA_PASSWORD=$sa_password"
+            echo "DATABASE_APP_PASSWORD=$app_password"
+          } >> "$GITHUB_ENV"
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
+      - name: Build and start the complete stack
+        run: docker compose up -d --build --wait --wait-timeout 300
+
+      - name: Verify API, providers, and web
+        run: |
+          api_health="$(curl --fail --silent --show-error --retry 10 --retry-delay 2 http://localhost:5081/health)"
+          test "$(jq -r '.status' <<< "$api_health")" = "Healthy"
+          test "$(jq -r '.checks[] | select(.name == "sqlserver") | .status' <<< "$api_health")" = "Healthy"
+          economic_status="$(curl --fail --silent --show-error http://localhost:5081/api/economic-data/status)"
+          test "$(jq -r '.data.provider.state' <<< "$economic_status")" = "Disabled"
+          curl --fail --silent --show-error http://localhost:3001/ > /dev/null
+          docker compose ps
+
+      - name: Show Compose logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 300
+
+      - name: Stop the Compose stack
+        if: always()
+        run: docker compose down --volumes --remove-orphans

@@ -68,6 +68,7 @@ export function MarketTerminal() {
   const synchronization = terminal.pipeline?.synchronization;
   const spread = terminal.quote ? terminal.quote.ask - terminal.quote.bid : null;
   const completedVisible = terminal.candles.filter((item) => item.isComplete).length;
+  const providerName = terminal.provider?.provider ?? "AllTick";
   const systemState = terminal.provider?.connected ? "Operational" : terminal.state === "loading" ? "Checking" : "Attention";
   const marketSession = now ? getXauUsdMarketSession(now) : null;
   const weeklyRangeLabel = now ? formatWeeklyRange(now) : "7D view";
@@ -103,7 +104,7 @@ export function MarketTerminal() {
           <section className="center-stack">
             <article className="terminal-panel chart-panel">
               <PanelHeader eyebrow="Price evidence" title="Market chart">
-                <span className={`state-chip ${terminal.provider?.connected ? "complete" : "negative"}`}>{terminal.provider?.connected ? "MT5 live" : "MT5 offline"}</span>
+                <span className={`state-chip ${terminal.provider?.connected ? "complete" : "negative"}`}>{terminal.provider?.connected ? `${providerName} live` : `${providerName} waiting`}</span>
                 <span className={`state-chip ${marketSession === null ? "neutral" : marketSession.isOpen ? "complete" : "negative"}`}>{marketSession === null ? "Market checking" : `Market ${marketSession.isOpen ? "open" : "closed"} · ${marketSession.nextTransitionLocalLabel}`}</span>
               </PanelHeader>
               <div className="chart-toolbar">
@@ -114,8 +115,8 @@ export function MarketTerminal() {
                     </button>
                   ))}
                 </div>
-                <span className="chart-context">XAUUSD</span><span className="chart-context">UTC</span><span className="chart-context" title="Seven-day chart window">{weeklyRangeLabel}</span>
-                <span className="chart-source">SQL history | MT5 live forming candle</span>
+                <span className="chart-context">XAUUSD</span><span className="chart-context">UTC</span><span className="chart-context" title="Seven-day history loaded; chart opens in recent focus">{weeklyRangeLabel}</span>
+                <span className="chart-source">SQL history | AllTick live forming candle</span>
               </div>
               <TradingChart
                 candles={terminal.candles}
@@ -133,7 +134,7 @@ export function MarketTerminal() {
               <PanelHeader eyebrow="Provider and storage" title="Data quality" />
               <div className="connection-row">
                 <StatusDot online={Boolean(terminal.provider?.connected)} />
-                <div><strong>{terminal.provider?.connected ? "MT5 connected" : "MT5 unavailable"}</strong><small>{terminal.provider?.message ?? "Checking provider connection…"}</small></div>
+                <div><strong>{terminal.provider?.connected ? `${providerName} connected` : `${providerName} waiting`}</strong><small>{terminal.provider?.message ?? "Checking provider connection…"}</small></div>
               </div>
               <dl className="terminal-details">
                 <Detail label="Internal symbol" value={terminal.provider?.applicationSymbol ?? "XAUUSD"} />
@@ -151,7 +152,7 @@ export function MarketTerminal() {
 
         <footer className="status-bar">
           <span><StatusDot online={Boolean(terminal.provider?.connected)} />System {systemState}</span>
-          <span>SQL Server · source of truth</span><span>MT5 · read-only provider</span>
+          <span>SQL Server · source of truth</span><span>AllTick live · Twelve Data reference</span>
           <span className="status-right">Phase 6 · Technical analysis engine</span>
         </footer>
       </section>
@@ -184,14 +185,14 @@ export function MarketTerminal() {
               {activeModule === "quality" ? (
                 <section className="module-quality-content">
                   <div className="module-summary-grid">
-                    <AnalysisTile label="Bid" value={formatPrice(terminal.quote?.bid)} tone="positive" detail="MT5 live" />
-                    <AnalysisTile label="Ask" value={formatPrice(terminal.quote?.ask)} detail="MT5 live" />
+                    <AnalysisTile label="Bid" value={formatPrice(terminal.quote?.bid)} tone="positive" detail="AllTick live" />
+                    <AnalysisTile label="Ask" value={formatPrice(terminal.quote?.ask)} detail="AllTick live" />
                     <AnalysisTile label="Spread" value={spread === null ? "—" : price.format(spread)} detail="Ask minus bid" />
                     <AnalysisTile label={`${terminal.timeframe} stored`} value={integer.format(availability?.storedCandles ?? 0)} detail="SQL candles" />
                   </div>
                   <div className="connection-row">
                     <StatusDot online={Boolean(terminal.provider?.connected)} />
-                    <div><strong>{terminal.provider?.connected ? "MT5 connected" : "MT5 unavailable"}</strong><small>{terminal.provider?.message ?? "Checking provider connection…"}</small></div>
+                    <div><strong>{terminal.provider?.connected ? `${providerName} connected` : `${providerName} waiting`}</strong><small>{terminal.provider?.message ?? "Checking provider connection…"}</small></div>
                   </div>
                   <dl className="terminal-details module-quality-details">
                     <Detail label="Internal symbol" value={terminal.provider?.applicationSymbol ?? "XAUUSD"} />

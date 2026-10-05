@@ -109,8 +109,26 @@ public sealed class EconomicDataSqlTests(ITestOutputHelper output)
             {
                 Id = duplicateId,
                 Kind = "EconomicObservation",
+                EvidenceType = "Economic",
+                SourceType = "EconomicProvider",
+                SourceKey = "fred",
+                ExternalId = "duplicate-economic-test",
+                IdentityHash = duplicateId.ToString("N").PadRight(64, '0'),
+                CanonicalSymbol = "XAUUSD",
+                OriginalSymbol = "TEST_SERIES",
                 ObservedAtUtc = now,
-                CreatedAtUtc = now
+                AvailableAtUtc = now,
+                ValidFromUtc = now,
+                Direction = "Unknown",
+                Importance = "Unknown",
+                Category = "Inflation",
+                Quality = "Medium",
+                Completeness = "Complete",
+                TimestampQuality = "DateOnly",
+                SourceReliability = "Known",
+                IsRelevant = true,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
             });
             context.EconomicObservations.Add(new EconomicObservation
             {

@@ -2,6 +2,10 @@ namespace XauAi.Application.MarketData;
 
 public sealed class MarketDataPipelineSettings
 {
+    public string Provider { get; init; } = "AllTick";
+
+    public string ProviderKey { get; init; } = "alltick";
+
     public bool SyncEnabled { get; init; }
 
     public string Symbol { get; init; } = "XAUUSD";
@@ -25,6 +29,12 @@ public sealed class MarketDataPipelineSettings
     public int MaxGapResults { get; init; } = 1000;
 
     public bool IncludeFormingCandle { get; init; }
+
+    public bool ReferenceDataEnabled { get; init; }
+
+    public string ReferenceProviderKey { get; init; } = "twelvedata";
+
+    public decimal ReferenceMaximumCloseDeviationBps { get; init; } = 30m;
 }
 
 public sealed record MarketDataSynchronizationRequest(
@@ -88,7 +98,8 @@ public sealed record StoredMarketCandle(
     decimal? RealVolume,
     decimal? Spread,
     bool IsComplete,
-    DateTimeOffset FetchedAtUtc);
+    DateTimeOffset FetchedAtUtc,
+    string ProviderKey = "");
 
 public sealed record MarketDataQuery(
     string Symbol,
@@ -127,3 +138,19 @@ public sealed record CandleValidationOutcome(
     bool IsValid,
     MarketCandleSnapshot? Candle,
     string? ErrorCode);
+
+public sealed record MarketDataSourceComparison(
+    string Symbol,
+    MarketTimeframe Timeframe,
+    string PrimaryProviderKey,
+    string ReferenceProviderKey,
+    bool ReferenceEnabled,
+    int RequestedLimit,
+    int MatchedCandles,
+    DateTimeOffset? LatestComparedOpenTimeUtc,
+    decimal? LatestPrimaryClose,
+    decimal? LatestReferenceClose,
+    decimal? LatestDeviationBps,
+    decimal? MaximumDeviationBps,
+    decimal ToleranceBps,
+    bool? IsWithinTolerance);

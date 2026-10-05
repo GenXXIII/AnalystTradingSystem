@@ -4,6 +4,10 @@ public sealed class MarketDataOptions
 {
     public const string SectionName = "MarketData";
 
+    public string Provider { get; set; } = "AllTick";
+
+    public string ProviderKey { get; set; } = "alltick";
+
     public bool SyncEnabled { get; set; }
 
     public string Symbol { get; set; } = "XAUUSD";

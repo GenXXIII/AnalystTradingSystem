@@ -39,7 +39,7 @@ builder.Services.AddSwaggerGen(options =>
     {
         Title = "XAUUSD AI API",
         Version = "v1",
-        Description = "Normalized market, technical, news, and economic evidence for the XAUUSD AI Trading Intelligence System."
+        Description = "Normalized market, technical, news, economic, and attributed analyst evidence for the XAUUSD AI Trading Intelligence System."
     });
 });
 
@@ -75,11 +75,14 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 });
 
 app.MapSystemStatusEndpoints();
-app.MapMt5Endpoints();
+app.MapMarketProviderEndpoints();
 app.MapMarketDataEndpoints();
 app.MapTechnicalAnalysisEndpoints();
 app.MapNewsEndpoints();
 app.MapEconomicDataEndpoints();
+app.MapAnalystDataEndpoints();
+app.MapEvidenceEndpoints();
+app.MapAiInterpretationEndpoints();
 
 app.MapFallback((HttpContext context) => Results.Json(
     ApiErrorResponse.Create(

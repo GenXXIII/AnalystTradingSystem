@@ -49,7 +49,15 @@ public sealed class EconomicObservationStoreTests
         Assert.Equal(2, replayed.Skipped);
         Assert.Equal(1, revised.Updated);
         Assert.Equal(2, await context.EconomicObservations.CountAsync());
-        Assert.Equal(2, await context.EvidenceRecords.CountAsync(record => record.Kind == "EconomicObservation"));
+        Assert.Equal(3, await context.EvidenceRecords.CountAsync(record => record.Kind == "EconomicObservation"));
+        Assert.Single(await context.EvidenceRelations.Where(relation => relation.RelationType == "Updates").ToArrayAsync());
+        var versions = await context.EvidenceRecords
+            .Where(record => record.ExternalId == "TEST_CPI:2026-08-01")
+            .OrderBy(record => record.AvailableAtUtc)
+            .ToArrayAsync();
+        Assert.Equal(2, versions.Length);
+        Assert.Equal(firstFetch.AddDays(1), versions[0].ValidToUtc);
+        Assert.Null(versions[1].ValidToUtc);
         var missing = await context.EconomicObservations.SingleAsync(item => item.ObservationDate == new DateOnly(2026, 9, 1));
         Assert.Null(missing.Value);
         Assert.Equal("Missing", missing.Status);

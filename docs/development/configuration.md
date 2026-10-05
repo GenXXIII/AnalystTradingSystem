@@ -81,50 +81,39 @@ prefix a credential, connection string, or private provider setting with
 
 | Variable | Required | Secret | Used by | Phase |
 | --- | --- | --- | --- | --- |
-| `AI_ENABLED` | No; defaults `false` | No | Backend AI | 2/11+ |
-| `AI_PROVIDER` | When AI is enabled | No | Backend AI | 11+ |
-| `AI_REQUIRES_API_KEY` | Provider-dependent | No | Backend AI | 2/11+ |
-| `AI_API_KEY` | Alias when selected provider requires it | Yes | Backend AI | 11+ |
-| `OPENAI_API_KEY` | When OpenAI is selected and requires a key | Yes | Backend AI | 11+ |
-| `AI_BASE_URL` | Provider-dependent | No/limited | Backend AI | 11+ |
-| `AI_MODEL` | When AI is enabled | No | Backend AI | 11+ |
-| `OPENAI_MODEL` | Optional alias for `AI_MODEL` | No | Backend AI | 11+ |
-| `AI_TEMPERATURE` | No; validated 0-2 | No | Backend AI | 11+ |
-| `AI_TIMEOUT_SECONDS` | No; default exists | No | Backend AI | 11+ |
-| `AI_MAX_RETRIES` | No; default exists | No | Backend AI | 11+ |
-| `AI_MAX_OUTPUT_TOKENS` | Yes when AI is enabled; default exists | No | Backend AI | 11+ |
-| `AI_DAILY_BUDGET_USD` | Positive value when AI is enabled | No | Backend AI | 11+ |
-| `AI_DAILY_REQUEST_LIMIT` | Positive value when AI is enabled | No | Backend AI | 11+ |
+| `<SPECIALIST>_AI_ENABLED` | No; defaults `false` | No | One AI specialist | 11 |
+| `<SPECIALIST>_AI_PROVIDER` | When that specialist is enabled | No | Attribution/model metadata | 11 |
+| `<SPECIALIST>_AI_ADAPTER` | When enabled; defaults `OpenAiCompatible` | No | Provider transport | 11 |
+| `<SPECIALIST>_AI_REQUIRES_API_KEY` | Provider-dependent | No | One AI specialist | 11 |
+| `<SPECIALIST>_AI_API_KEY` | When required | Yes | One AI specialist | 11 |
+| `<SPECIALIST>_AI_BASE_URL` | When enabled | No/limited | One AI specialist | 11 |
+| `<SPECIALIST>_AI_MODEL` | When enabled | No | One AI specialist | 11 |
+| `<SPECIALIST>_AI_TEMPERATURE` | No; validated 0-2 | No | One AI specialist | 11 |
+| `<SPECIALIST>_AI_TIMEOUT_SECONDS` | No; default exists | No | One AI specialist | 11 |
+| `<SPECIALIST>_AI_MAX_RETRIES` | No; default exists | No | One AI specialist | 11 |
+| `<SPECIALIST>_AI_MAX_OUTPUT_TOKENS` | No; bounded default exists | No | One AI specialist | 11 |
+| `<SPECIALIST>_AI_REQUESTS_PER_MINUTE` | No; bounded default exists | No | One AI specialist | 11 |
 
-An enabled AI provider cannot start with an unspecified provider/model, a
-required-but-missing key, a zero budget, or a zero request limit. This requires
-an explicit cost decision before future AI calls become possible. Caching,
-deduplication, token accounting, and actual budget enforcement remain later-phase work.
+`<SPECIALIST>` is `NEWS`, `CANDLE`, `STRUCTURE`, `LIQUIDITY`, `FLOW`, `KTR`,
+`RISK`, or `MASTER`. Each configuration is validated independently. Phase 11
+enforces evidence hashing, persisted interpretation reuse, bounded compression,
+token accounting, retry limits, and per-specialist request pacing.
 
-### MetaTrader 5
+### AllTick (default market-data provider)
 
 | Variable | Required | Secret | Used by | Phase |
 | --- | --- | --- | --- | --- |
-| `MT5_ENABLED` | No; defaults `false` | No | Backend MT5 | 2/4 |
-| `MT5_LOGIN` | When MT5 is enabled | Yes | Backend MT5 | 4 |
-| `MT5_PASSWORD` | When MT5 is enabled | Yes | Backend MT5 | 4 |
-| `MT5_SERVER` | When MT5 is enabled | Limited | Backend MT5 | 4 |
-| `MT5_TERMINAL_PATH` | When MT5 is enabled | Limited | Backend MT5 | 4 |
-| `MT5_APPLICATION_SYMBOL` | Yes; defaults `XAUUSD` | No | Backend MT5 | 4 |
-| `MT5_SYMBOL` | Yes; defaults `XAUUSD` | No | Backend MT5 | 4 |
-| `MT5_TIMEZONE` | Yes; defaults `UTC` | No | Backend MT5 | 4 |
-| `MT5_CONNECTION_TIMEOUT_SECONDS` | No; default exists | No | Backend MT5 | 4 |
-| `MT5_REQUEST_TIMEOUT_SECONDS` | No; default exists | No | Backend MT5 | 4 |
-| `MT5_RECONNECT_DELAY_SECONDS` | No; default exists | No | Backend MT5 | 4 |
-| `MT5_MAX_BARS_PER_REQUEST` | No; default exists | No | Backend MT5 | 4 |
-| `MT5_PYTHON_EXECUTABLE` | No; defaults `py` | No | Backend MT5 | 4 |
-| `MT5_BRIDGE_SCRIPT_PATH` | Optional override | Limited | Backend MT5 | 4 |
+| `ALLTICK_ENABLED` | No; defaults `false` | No | Backend AllTick | Market data |
+| `ALLTICK_TOKEN` | When AllTick is enabled | Yes | Backend AllTick | Market data |
+| `ALLTICK_APPLICATION_SYMBOL` | Yes; defaults `XAUUSD` | No | Backend AllTick | Market data |
+| `ALLTICK_SYMBOL` | Yes; defaults `GOLD` | No | Backend AllTick | Market data |
+| `ALLTICK_HTTP_BASE_URL`, `ALLTICK_WEBSOCKET_URL` | Validated defaults exist | No | Backend AllTick | Market data |
+| `ALLTICK_REQUEST_TIMEOUT_SECONDS`, `ALLTICK_RECONNECT_DELAY_SECONDS`, `ALLTICK_HEARTBEAT_INTERVAL_SECONDS` | Bounded defaults exist | No | Backend AllTick | Market data |
+| `ALLTICK_QUOTE_MAX_AGE_SECONDS`, `ALLTICK_REALTIME_PERSIST_INTERVAL_SECONDS` | Bounded defaults exist | No | Backend AllTick | Market data |
+| `ALLTICK_MAX_BARS_PER_REQUEST`, `ALLTICK_MINIMUM_HTTP_REQUEST_INTERVAL_SECONDS` | Bounded free-tier defaults exist | No | Backend AllTick | Market data |
 
-`MT5_APPLICATION_SYMBOL` is the provider-neutral identity used by the
-application. `MT5_SYMBOL` is the exact broker-specific symbol and may have a
-suffix. `MT5_TIMEZONE` must remain `UTC`. The bridge sends UTC ranges, and the
-persistence layer stores UTC timestamps. The integration is read-only and does
-not expose order operations.
+`ALLTICK_TOKEN` is server-only. AllTick calls XAUUSD gold `GOLD`; the adapter
+maps it to the application's stable `XAUUSD` identity.
 
 ### Market data pipeline
 
@@ -162,7 +151,7 @@ behavior and limits.
 These values affect analytical meaning and are kept in the established typed
 configuration path. They are not credentials. The committed application default
 keeps analysis disabled, while the local ignored `.env` may enable it. The API
-uses only completed normalized SQL candles and never calls MT5 while calculating
+uses only completed normalized SQL candles and never calls a provider while calculating
 analysis. See [technical analysis](../technical-analysis.md) for formulas,
 warm-up behavior, time safety, and limitations.
 
@@ -222,18 +211,48 @@ warm-up behavior, time safety, and limitations.
 | `ECONOMIC_DATA_RETRY_BASE_DELAY_SECONDS` | Yes; bounded 1-60 | No | Retry policy | 8 |
 | `ECONOMIC_DATA_TRACKED_SERIES` | Yes; `SERIES_ID:Category` list | No | Series selection | 8 |
 | `ANALYSTS_ENABLED` | No; defaults `false` | No | Backend Analysts | 2/9 |
-| `ANALYST_PROVIDER` | When Analysts is enabled | No | Backend Analysts | 9 |
-| `ANALYST_SOURCE_TYPE` | Yes; default `Manual` | No | Backend Analysts | 9 |
+| `ANALYST_PROVIDER` | Yes; Phase 9 adapter is `RssAtom` | No | Backend Analysts | 9 |
+| `ANALYST_PROVIDER_KEY` | Yes; defaults `analyst-rss` | No | Analyst persistence | 9 |
+| `ANALYST_SOURCE_TYPE` | Yes; Phase 9 adapter requires `RssFeed` | No | Backend Analysts | 9 |
 | `ANALYST_REQUIRES_API_KEY` | Provider-dependent | No | Backend Analysts | 9 |
 | `ANALYST_PROVIDER_API_KEY` | Only when the provider requires it | Yes | Backend Analysts | 9 |
-| `ANALYST_BASE_URL` | Required for non-manual sources | No | Backend Analysts | 9 |
+| `ANALYST_BASE_URL` | Required when enabled; permitted RSS/Atom URL | No | Backend Analysts | 9 |
 | `ANALYST_TIMEOUT_SECONDS` | No; default exists | No | Backend Analysts | 9 |
 | `ANALYST_MAX_RETRIES` | No; default exists | No | Backend Analysts | 9 |
 | `ANALYST_RATE_LIMIT_PER_MINUTE` | Provider-dependent | No | Backend Analysts | 9 |
+| `ANALYST_SYMBOL` | Yes; defaults `XAUUSD` | No | Analyst normalization | 9 |
+| `ANALYST_INITIAL_LOOKBACK_DAYS` | Yes; bounded 1-3650 | No | Initial feed collection | 9 |
+| `ANALYST_COLLECTION_OVERLAP_MINUTES` | Yes; bounded 0-1440 | No | Incremental sync | 9 |
+| `ANALYST_SYNC_INTERVAL_MINUTES` | Yes; bounded 1-10080 | No | Scheduler | 9 |
+| `ANALYST_PROVIDER_PAGE_SIZE` | Yes; bounded 1-500 | No | Provider paging | 9 |
+| `ANALYST_MAXIMUM_PAGES_PER_SYNC` | Yes; bounded 1-100 | No | Provider safety limit | 9 |
+| `ANALYST_MAXIMUM_PAGE_SIZE` | Yes; bounded 1-500 | No | Query API | 9 |
+| `ANALYST_MAXIMUM_COLLECTION_RANGE_DAYS` | Yes; bounded 1-36500 | No | Sync range | 9 |
+| `ANALYST_RETRY_BASE_DELAY_SECONDS` | Yes; bounded 1-300 | No | Retry policy | 9 |
+| `ANALYST_RELEVANCE_KEYWORDS` | Yes; comma-separated defaults | No | Deterministic relevance | 9 |
+| `EVIDENCE_MAXIMUM_PAGE_SIZE` | Yes; bounded 1-1000 | No | Evidence query API | 10 |
+| `EVIDENCE_MAXIMUM_QUERY_RANGE_DAYS` | Yes; bounded 1-3650 | No | Evidence query API | 10 |
+| `EVIDENCE_DEFAULT_PACK_LOOKBACK_DAYS` | Yes; bounded 1-3650 | No | Evidence packs | 10 |
+| `EVIDENCE_MAXIMUM_PACK_LOOKBACK_DAYS` | Yes; bounded 1-3650 | No | Evidence packs | 10 |
+| `EVIDENCE_MAXIMUM_PACK_ITEMS_PER_TYPE` | Yes; bounded 1-1000 | No | Evidence packs | 10 |
+| `EVIDENCE_INGESTION_BATCH_SIZE` | Yes; bounded 1-5000 | No | Evidence ingestion | 10 |
+| `EVIDENCE_CONFLICT_WINDOW_HOURS` | Yes; bounded 1-720 | No | Conflict detection | 10 |
+| `EVIDENCE_MAXIMUM_CONFLICTS` | Yes; bounded 1-5000 | No | Conflict API/pack | 10 |
+| `AI_INTERPRETATION_PROMPT_VERSION` | Yes; defaults `phase11-v2` | No | AI cache/prompt version | 11 |
+| `AI_INTERPRETATION_DEFAULT_LOOKBACK_HOURS` | Yes; bounded by maximum | No | Evidence selection | 11 |
+| `AI_INTERPRETATION_MAXIMUM_LOOKBACK_HOURS` | Yes; bounded 1-87600 | No | Evidence selection | 11 |
+| `AI_INTERPRETATION_MAXIMUM_EVIDENCE_ITEMS` | Yes; bounded 1-500 | No | Evidence selection | 11 |
+| `AI_INTERPRETATION_MAXIMUM_COMPRESSED_CHARACTERS` | Yes; bounded 2000-1000000 | No | Provider evidence package | 11 |
+| `AI_INTERPRETATION_CURRENT_CONTEXT_CACHE_MINUTES` | Yes; bounded 1-60 | No | Current-time cache context | 11 |
+| `AI_INTERPRETATION_MAXIMUM_PAGE_SIZE` | Yes; bounded 1-1000 | No | Interpretation query API | 11 |
+| `<SPECIALIST>_AI_ENABLED` | No; defaults `false` | No | One Phase 11 specialist | 11 |
+| `<SPECIALIST>_AI_API_KEY` | When that enabled provider requires it | Yes | One Phase 11 specialist | 11 |
+| `<SPECIALIST>_AI_PROVIDER/ADAPTER/MODEL/BASE_URL` | Required when enabled | No | One Phase 11 specialist | 11 |
 
-Allowed analyst source types are `OfficialApi`, `RssFeed`, `PublicSource`,
-`PermittedWeb`, and `Manual`. A configured source is not permission to collect
-data; terms, licensing, and access rules must be assessed during Phase 9.
+Phase 9 implements the `RssAtom` adapter with `RssFeed` source type. A
+configured feed is not permission to collect data: terms, licensing, access,
+rate limits, and summary-retention rights must be assessed before enabling it.
+See [analyst data](analyst-data.md).
 
 Phase 7 supports `NewsData` as its provider. The committed configuration and
 `.env.example` keep collection disabled. Enabling it requires a real
@@ -248,6 +267,11 @@ requires a server-side `FRED_API_KEY` when enabled. The configured series list,
 backfill, revision overlap, request/page bounds, retry behavior, APIs, and
 opt-in live verification are documented in the
 [economic-data development guide](economic-data.md).
+
+Phase 10 evidence settings are non-secret safety bounds. The default evidence
+pack lookback cannot exceed the configured maximum; startup validation rejects
+invalid values. See the [normalization guide](normalization.md) for the evidence
+contract, API, normalization, deduplication, and historical timing rules.
 
 ## Local development
 
@@ -276,30 +300,6 @@ values for `MSSQL_SA_PASSWORD` and `DATABASE_APP_PASSWORD`, and run Compose.
 the migration and exits, and the API uses only the restricted login. Docker
 Compose reads `.env` and explicitly injects backend variables. Dockerfiles
 contain no credentials.
-
-### Live MT5 development
-
-The official MetaTrader5 Python package communicates with the installed Windows
-desktop terminal. The live API must therefore run on Windows; a Linux Docker API
-cannot directly use `terminal64.exe`.
-
-Install the bridge package and launch the host API:
-
-```powershell
-py -3 -m pip install -r scripts/mt5/requirements.txt
-docker compose stop api
-./scripts/start-mt5-api.ps1
-```
-
-The script reads the ignored `.env`, validates required database and MT5 values,
-applies reviewed migrations with the SQL administrator, then switches to the
-restricted application login before starting the API on
-`http://localhost:5081`. Neither connection is printed. The MT5 terminal path
-must be absolute and end in `terminal64.exe`.
-
-Provider status and failures expose only safe state, mapped symbol, masked login,
-server, and a corrective message. Passwords and complete configuration objects
-must never be logged.
 
 ## Production
 

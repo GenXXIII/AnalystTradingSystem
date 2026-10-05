@@ -30,37 +30,18 @@ public sealed class LayerDependencyTests
     }
 
     [Fact]
-    public void Domain_and_application_do_not_reference_the_mt5_sdk()
+    public void Solution_does_not_reference_the_metatrader_sdk()
     {
         var domainReferences = XauAi.Domain.AssemblyReference.Assembly.GetReferencedAssemblies();
         var applicationReferences = XauAi.Application.AssemblyReference.Assembly.GetReferencedAssemblies();
+        var infrastructureReferences = XauAi.Infrastructure.AssemblyReference.Assembly.GetReferencedAssemblies();
 
         Assert.DoesNotContain(domainReferences, reference =>
             reference.Name?.Contains("MetaTrader", StringComparison.OrdinalIgnoreCase) == true);
         Assert.DoesNotContain(applicationReferences, reference =>
             reference.Name?.Contains("MetaTrader", StringComparison.OrdinalIgnoreCase) == true);
-    }
-
-    [Fact]
-    public void Infrastructure_contains_the_mt5_adapter_and_bridge()
-    {
-        var repositoryRoot = FindRepositoryRoot();
-
-        Assert.True(File.Exists(Path.Combine(
-            repositoryRoot,
-            "backend",
-            "XauAi.Infrastructure",
-            "MarketData",
-            "Mt5",
-            "Mt5MarketDataProvider.cs")));
-        Assert.True(File.Exists(Path.Combine(
-            repositoryRoot,
-            "backend",
-            "XauAi.Infrastructure",
-            "MarketData",
-            "Mt5",
-            "Bridge",
-            "mt5_bridge.py")));
+        Assert.DoesNotContain(infrastructureReferences, reference =>
+            reference.Name?.Contains("MetaTrader", StringComparison.OrdinalIgnoreCase) == true);
     }
 
     [Fact]
@@ -79,6 +60,42 @@ public sealed class LayerDependencyTests
             "EconomicData",
             "Fred",
             "FredEconomicDataProvider.cs")));
+    }
+
+    [Fact]
+    public void Analyst_provider_adapter_is_isolated_in_infrastructure_behind_application_contracts()
+    {
+        var applicationTypes = XauAi.Application.AssemblyReference.Assembly.GetTypes();
+        Assert.Contains(applicationTypes, type => type.Name == "IAnalystDataProvider");
+        Assert.DoesNotContain(applicationTypes, type =>
+            type.Name.Contains("RssAtom", StringComparison.OrdinalIgnoreCase));
+
+        var repositoryRoot = FindRepositoryRoot();
+        Assert.True(File.Exists(Path.Combine(
+            repositoryRoot,
+            "backend",
+            "XauAi.Infrastructure",
+            "Analysts",
+            "Rss",
+            "RssAtomAnalystDataProvider.cs")));
+    }
+
+    [Fact]
+    public void Evidence_contracts_are_application_owned_and_sql_persistence_is_in_infrastructure()
+    {
+        var applicationTypes = XauAi.Application.AssemblyReference.Assembly.GetTypes();
+        Assert.Contains(applicationTypes, type => type.Name == "IEvidenceStore");
+        Assert.Contains(applicationTypes, type => type.Name == "IEvidenceQueryService");
+        Assert.Contains(applicationTypes, type => type.Name == "EvidencePack");
+
+        var repositoryRoot = FindRepositoryRoot();
+        Assert.True(File.Exists(Path.Combine(
+            repositoryRoot,
+            "backend",
+            "XauAi.Infrastructure",
+            "Evidence",
+            "Persistence",
+            "EfEvidenceStore.cs")));
     }
 
     private static bool IsSolutionAssembly(AssemblyName reference) =>

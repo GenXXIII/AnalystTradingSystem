@@ -1,7 +1,7 @@
 # Technical analysis engine
 
 Phase 6 is an application-owned, deterministic analysis layer over Phase 5's
-normalized SQL candles. MT5 supplies raw market evidence; it does not calculate
+normalized SQL candles. The selected market provider supplies raw evidence; it does not calculate
 or own the analytical result. The engine does not call OpenAI, create final
 BUY/SELL signals, place orders, or claim profitability.
 
@@ -83,10 +83,11 @@ relative price levels, not standalone signals
 
 ### Volume decision
 
-VWAP is intentionally not implemented in Phase 6. MT5 bars expose both
-`tick_volume` and `real_volume`, but those fields describe broker/platform data
-and do not make tick counts equivalent to centralized exchange-traded XAUUSD
-volume ([MQL5 rate fields](https://www.mql5.com/en/book/advanced/python/python_copyrates)).
+VWAP is intentionally not implemented in Phase 6. OTC XAUUSD volume fields are
+provider-specific and do not make tick counts equivalent to centralized
+exchange-traded gold volume. AllTick may return zero volume for precious-metal
+bars, while market providers expose source-specific volume fields
+([MQL5 rate fields](https://www.mql5.com/en/book/advanced/python/python_copyrates)).
 Using that data as precise global gold volume would create false precision.
 
 ## Candles, structure, and price action

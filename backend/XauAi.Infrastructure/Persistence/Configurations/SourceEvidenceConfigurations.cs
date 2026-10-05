@@ -169,7 +169,21 @@ internal sealed class AnalystStatementConfiguration : IEntityTypeConfiguration<A
 {
     public void Configure(EntityTypeBuilder<AnalystStatement> builder)
     {
-        builder.ToTable("AnalystStatements");
+        builder.ToTable("AnalystStatements", table =>
+        {
+            table.HasCheckConstraint(
+                "CK_AnalystStatements_Direction",
+                "[Direction] IS NULL OR [Direction] IN ('Unknown', 'Bullish', 'Bearish', 'Neutral')");
+            table.HasCheckConstraint(
+                "CK_AnalystStatements_HorizonUnit",
+                "[HorizonUnit] IN ('Unknown', 'Intraday', 'Days', 'Weeks', 'Months', 'Years', 'LongTerm')");
+            table.HasCheckConstraint(
+                "CK_AnalystStatements_TargetRange",
+                "[TargetRangeLow] IS NULL OR [TargetRangeHigh] IS NULL OR [TargetRangeLow] <= [TargetRangeHigh]");
+            table.HasCheckConstraint(
+                "CK_AnalystStatements_Confidence",
+                "[Confidence] IS NULL OR ([Confidence] >= 0 AND [Confidence] <= 100)");
+        });
         builder.HasKey(entity => entity.Id);
         builder.Property(entity => entity.Id).ValueGeneratedNever();
         builder.Property(entity => entity.ExternalId).HasMaxLength(256).IsUnicode(false);
@@ -178,25 +192,51 @@ internal sealed class AnalystStatementConfiguration : IEntityTypeConfiguration<A
         builder.Property(entity => entity.PermittedContent).HasColumnType("nvarchar(max)");
         builder.Property(entity => entity.SourceUrl).HasMaxLength(2048).IsUnicode(false);
         builder.Property(entity => entity.SourceUrlHash).HasMaxLength(64).IsFixedLength().IsUnicode(false);
+        builder.Property(entity => entity.InstrumentCode).HasMaxLength(32).IsUnicode(false).IsRequired();
+        builder.Property(entity => entity.AssetClass).HasMaxLength(64).IsRequired();
         builder.Property(entity => entity.Direction).HasMaxLength(32).IsUnicode(false);
         builder.Property(entity => entity.TargetPrice).HasPrecision(19, 8);
+        builder.Property(entity => entity.TargetRangeLow).HasPrecision(19, 8);
+        builder.Property(entity => entity.TargetRangeHigh).HasPrecision(19, 8);
+        builder.Property(entity => entity.TargetCurrency).HasMaxLength(3).IsUnicode(false);
+        builder.Property(entity => entity.HorizonUnit).HasMaxLength(32).IsUnicode(false).IsRequired();
         builder.Property(entity => entity.TimeHorizon).HasMaxLength(100);
+        builder.Property(entity => entity.Confidence).HasPrecision(5, 2);
+        builder.Property(entity => entity.Reason).HasMaxLength(2000);
+        builder.Property(entity => entity.Language).HasMaxLength(16).IsUnicode(false).IsRequired();
+        builder.Property(entity => entity.Category).HasMaxLength(100).IsRequired();
+        builder.Property(entity => entity.Status).HasMaxLength(32).IsUnicode(false).IsRequired();
+        builder.Property(entity => entity.ClaimHash).HasMaxLength(64).IsFixedLength().IsUnicode(false);
         builder.Property(entity => entity.PublishedAtUtc).IsUtcTimestamp();
         builder.Property(entity => entity.FetchedAtUtc).IsUtcTimestamp();
+        builder.Property(entity => entity.CreatedAtUtc).IsUtcTimestamp();
+        builder.Property(entity => entity.UpdatedAtUtc).IsUtcTimestamp();
 
         builder.HasOne<EvidenceRecord>().WithOne().HasForeignKey<AnalystStatement>(entity => entity.Id).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<DataProvider>().WithMany().HasForeignKey(entity => entity.DataProviderId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Instrument>().WithMany().HasForeignKey(entity => entity.InstrumentId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<AnalystSource>().WithMany().HasForeignKey(entity => entity.AnalystSourceId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Analyst>().WithMany().HasForeignKey(entity => entity.AnalystId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<AnalystPublication>().WithMany().HasForeignKey(entity => entity.PublicationId).OnDelete(DeleteBehavior.Restrict);
 
-        builder.HasIndex(entity => new { entity.DataProviderId, entity.ExternalId })
+        builder.HasIndex(entity => new { entity.PublicationId, entity.ExternalId })
             .IsUnique()
-            .HasFilter("[ExternalId] IS NOT NULL")
-            .HasDatabaseName("UX_AnalystStatements_Provider_ExternalId");
+            .HasFilter("[PublicationId] IS NOT NULL AND [ExternalId] IS NOT NULL")
+            .HasDatabaseName("UX_AnalystStatements_Publication_ExternalId");
+        builder.HasIndex(entity => new { entity.PublicationId, entity.ClaimHash })
+            .IsUnique()
+            .HasFilter("[PublicationId] IS NOT NULL AND [ClaimHash] IS NOT NULL")
+            .HasDatabaseName("UX_AnalystStatements_Publication_ClaimHash");
         builder.HasIndex(entity => entity.SourceUrlHash)
-            .IsUnique()
             .HasFilter("[SourceUrlHash] IS NOT NULL")
-            .HasDatabaseName("UX_AnalystStatements_SourceUrlHash");
-        builder.HasIndex(entity => new { entity.InstrumentId, entity.PublishedAtUtc })
+            .HasDatabaseName("IX_AnalystStatements_SourceUrlHash");
+        builder.HasIndex(entity => new { entity.InstrumentCode, entity.PublishedAtUtc })
             .HasDatabaseName("IX_AnalystStatements_Instrument_PublishedAtUtc");
+        builder.HasIndex(entity => new { entity.AnalystSourceId, entity.PublishedAtUtc })
+            .HasDatabaseName("IX_AnalystStatements_Source_PublishedAtUtc");
+        builder.HasIndex(entity => new { entity.AnalystId, entity.PublishedAtUtc })
+            .HasDatabaseName("IX_AnalystStatements_Analyst_PublishedAtUtc");
+        builder.HasIndex(entity => new { entity.Direction, entity.PublishedAtUtc })
+            .HasDatabaseName("IX_AnalystStatements_Direction_PublishedAtUtc");
     }
 }

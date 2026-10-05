@@ -50,6 +50,43 @@ public sealed class MarketDataSynchronizationServiceTests
     }
 
     [Fact]
+    public async Task Incremental_sync_recovers_session_gap_saved_before_startup_history_runs()
+    {
+        var fridayLastCandle = new DateTimeOffset(2026, 10, 2, 20, 45, 0, TimeSpan.Zero);
+        var sundayLatestCandle = new DateTimeOffset(2026, 10, 4, 23, 0, 0, TimeSpan.Zero);
+        var requestedToUtc = sundayLatestCandle.AddMinutes(45);
+        var store = new InMemoryStore();
+        await store.SaveAsync(
+        [
+            CreateCandle(fridayLastCandle, MarketTimeframe.M15, complete: true),
+            CreateCandle(sundayLatestCandle, MarketTimeframe.M15, complete: true)
+        ]);
+        var provider = new FakeProvider(GenerateCandles);
+        var service = CreateService(
+            provider,
+            store,
+            new FakeStateStore(),
+            batchSize: 100,
+            nowUtc: requestedToUtc,
+            timeframe: MarketTimeframe.M15,
+            initialHistoryDays: 3);
+
+        await service.SynchronizeAsync(new MarketDataSynchronizationRequest(
+            "XAUUSD",
+            MarketTimeframe.M15,
+            FromUtc: null,
+            ToUtc: requestedToUtc,
+            IncludeFormingCandle: false));
+
+        Assert.Equal(
+            new DateTimeOffset(2026, 10, 4, 22, 0, 0, TimeSpan.Zero),
+            provider.Requests.Single().FromUtc);
+        Assert.Contains(store.Candles, candle =>
+            candle.Timeframe == MarketTimeframe.M15
+            && candle.OpenTimeUtc == new DateTimeOffset(2026, 10, 4, 22, 0, 0, TimeSpan.Zero));
+    }
+
+    [Fact]
     public async Task Transient_failure_uses_bounded_retry_and_succeeds()
     {
         var failuresRemaining = 2;
@@ -57,7 +94,7 @@ public sealed class MarketDataSynchronizationServiceTests
         {
             if (failuresRemaining-- > 0)
             {
-                throw new MarketDataException(MarketDataErrorCodes.Timeout, "Timed out.");
+                throw new MarketDataException(MarketDataErrorCodes.ProviderTimeout, "Timed out.");
             }
 
             return GenerateCandles(timeframe, from, to);
@@ -90,7 +127,7 @@ public sealed class MarketDataSynchronizationServiceTests
         {
             if (from >= StartUtc.AddHours(3))
             {
-                throw new MarketDataException(MarketDataErrorCodes.AuthenticationFailed, "Authentication failed.");
+                throw new MarketDataException(MarketDataErrorCodes.ProviderAuthenticationFailed, "Authentication failed.");
             }
 
             return GenerateCandles(timeframe, from, to);
@@ -192,7 +229,9 @@ public sealed class MarketDataSynchronizationServiceTests
         int batchSize,
         DateTimeOffset nowUtc,
         int maxRetries = 0,
-        int retryDelaySeconds = 0) =>
+        int retryDelaySeconds = 0,
+        MarketTimeframe timeframe = MarketTimeframe.H1,
+        int initialHistoryDays = 1) =>
         new(
             provider,
             store,
@@ -202,8 +241,8 @@ public sealed class MarketDataSynchronizationServiceTests
             new MarketDataPipelineSettings
             {
                 Symbol = "XAUUSD",
-                Timeframes = [MarketTimeframe.H1],
-                InitialHistoryDays = 1,
+                Timeframes = [timeframe],
+                InitialHistoryDays = initialHistoryDays,
                 BatchSize = batchSize,
                 MaxQueryRangeDays = 30,
                 MaxRetries = maxRetries,

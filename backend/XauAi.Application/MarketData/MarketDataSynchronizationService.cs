@@ -240,6 +240,41 @@ internal sealed class MarketDataSynchronizationService(
             return request.Timeframe.AlignDown(requestedToUtc.AddDays(-settings.InitialHistoryDays));
         }
 
+        var historyFromUtc = request.Timeframe.AlignDown(
+            requestedToUtc.AddDays(-settings.InitialHistoryDays));
+        var openTimes = await queryStore.GetOpenTimesAsync(
+            request.Symbol,
+            request.Timeframe,
+            historyFromUtc,
+            requestedToUtc,
+            cancellationToken);
+        var earliestGap = MarketDataGapDetector.Detect(
+                request.Symbol,
+                request.Timeframe,
+                openTimes,
+                sessionCalendar,
+                settings.MaxGapResults)
+            .FirstOrDefault();
+        if (earliestGap is not null)
+        {
+            // Re-read one candle before the first detected gap. This safely overlaps an
+            // existing candle and also includes an aligned session-opening candle whose
+            // first quote may arrive just after the nominal open (for example 22:01 UTC).
+            var recoveryFromUtc = earliestGap.ExpectedOpenTimeUtc.Subtract(request.Timeframe.Duration());
+            if (recoveryFromUtc < historyFromUtc)
+            {
+                recoveryFromUtc = historyFromUtc;
+            }
+
+            logger.LogInformation(
+                "Market-data synchronization found a stored gap for {Symbol} {Timeframe} at {GapOpenTimeUtc}; recovering from {RecoveryFromUtc}",
+                request.Symbol,
+                request.Timeframe.Code(),
+                earliestGap.ExpectedOpenTimeUtc,
+                recoveryFromUtc);
+            return recoveryFromUtc;
+        }
+
         return latest.IsComplete
             ? latest.OpenTimeUtc.Add(request.Timeframe.Duration())
             : latest.OpenTimeUtc;
@@ -292,7 +327,7 @@ internal sealed class MarketDataSynchronizationService(
         if (!string.Equals(request.Symbol, settings.Symbol, StringComparison.OrdinalIgnoreCase))
         {
             throw new MarketDataException(
-                MarketDataErrorCodes.SymbolNotFound,
+                MarketDataErrorCodes.ProviderSymbolNotFound,
                 "The requested market symbol is not configured.");
         }
 
@@ -313,11 +348,11 @@ internal sealed class MarketDataSynchronizationService(
     }
 
     private static bool IsTransient(string code) => code is
-        MarketDataErrorCodes.Timeout
-        or MarketDataErrorCodes.ConnectionFailed
-        or MarketDataErrorCodes.InitializationFailed
-        or MarketDataErrorCodes.DataRequestFailed
-        or MarketDataErrorCodes.Unavailable;
+        MarketDataErrorCodes.ProviderConnectionFailed
+        or MarketDataErrorCodes.ProviderDataRequestFailed
+        or MarketDataErrorCodes.ProviderRateLimited
+        or MarketDataErrorCodes.ProviderTimeout
+        or MarketDataErrorCodes.ProviderUnavailable;
 
     private sealed class MutableProgress
     {

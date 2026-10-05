@@ -99,7 +99,7 @@ internal sealed class MarketDataQueryService(
         if (!string.Equals(symbol, settings.Symbol, StringComparison.OrdinalIgnoreCase))
         {
             throw new MarketDataException(
-                MarketDataErrorCodes.SymbolNotFound,
+                MarketDataErrorCodes.ProviderSymbolNotFound,
                 "The requested market symbol is not configured.");
         }
 

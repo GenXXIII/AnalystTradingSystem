@@ -6,13 +6,14 @@ namespace XauAi.Infrastructure.MarketData.Persistence;
 
 internal sealed record MarketDataReferences(Guid InstrumentId, Guid TimeframeId, Guid ProviderId);
 
-internal sealed class MarketDataReferenceResolver(XauAiDbContext dbContext)
+internal sealed class MarketDataReferenceResolver(
+    XauAiDbContext dbContext,
+    MarketDataPipelineSettings settings)
 {
-    private const string Mt5ProviderKey = "mt5";
-
     public async Task<MarketDataReferences?> FindAsync(
         string symbol,
         MarketTimeframe timeframe,
+        string? providerKey,
         CancellationToken cancellationToken)
     {
         var instrumentId = await dbContext.Instruments
@@ -25,7 +26,7 @@ internal sealed class MarketDataReferenceResolver(XauAiDbContext dbContext)
             .Select(value => (Guid?)value.Id)
             .SingleOrDefaultAsync(cancellationToken);
         var providerId = await dbContext.DataProviders
-            .Where(provider => provider.Key == Mt5ProviderKey && provider.IsActive)
+            .Where(provider => provider.Key == (providerKey ?? settings.ProviderKey) && provider.IsActive)
             .Select(provider => (Guid?)provider.Id)
             .SingleOrDefaultAsync(cancellationToken);
 
@@ -37,8 +38,9 @@ internal sealed class MarketDataReferenceResolver(XauAiDbContext dbContext)
     public async Task<MarketDataReferences> RequireAsync(
         string symbol,
         MarketTimeframe timeframe,
-        CancellationToken cancellationToken) =>
-        await FindAsync(symbol, timeframe, cancellationToken)
+        CancellationToken cancellationToken,
+        string? providerKey = null) =>
+        await FindAsync(symbol, timeframe, providerKey, cancellationToken)
         ?? throw new MarketDataException(
             MarketDataErrorCodes.DatabaseDisabled,
             "Required market reference data is unavailable.");

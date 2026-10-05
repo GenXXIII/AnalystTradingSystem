@@ -22,3 +22,5 @@ Current records:
 - [ADR-0002: Typed configuration and secret boundaries](0002-typed-configuration-and-secret-boundaries.md)
 - [ADR-0003: SQL Server persistence and evidence model](0003-sql-server-persistence-and-evidence-model.md)
 - [ADR-0004: Current economic observations with append-only revisions](0004-economic-observation-revisions.md)
+- [ADR-0005: Analyst claims are immutable attributed evidence](0005-analyst-claims-are-immutable-attributed-evidence.md)
+- [ADR-0006: Availability time governs evidence visibility](0006-availability-time-governs-evidence-visibility.md)

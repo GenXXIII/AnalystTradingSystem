@@ -4,7 +4,7 @@
 
 - Keep Domain independent of API, Infrastructure, frameworks, and providers.
 - Put use-case contracts and orchestration in Application.
-- Put SQL Server, Redis, MT5, news, economic, and AI implementations in Infrastructure.
+- Put SQL Server, Redis, AllTick, Twelve Data, news, economic, and AI implementations in Infrastructure.
 - Keep HTTP, serialization, and middleware concerns in API.
 - Organize business work by feature; do not create catch-all Services, Helpers, Managers, or Utils folders.
 - Keep UI concerns out of backend projects and provider concerns out of React components.

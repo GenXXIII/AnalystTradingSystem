@@ -3,7 +3,8 @@
 ## Product boundary
 
 The XAUUSD AI Analyst Trading System is an independent application. Its
-architecture is not MT5, DataNews.io, FRED, or OpenAI. Those services are
+architecture is not AllTick, Twelve Data, NewsData.io, FRED, an analyst feed,
+or OpenAI. Those services are
 replaceable providers at the Infrastructure boundary.
 
 The application owns the analyst console, use cases, normalized evidence,
@@ -19,15 +20,18 @@ flowchart LR
     App --> Domain[Provider-neutral domain]
     App --> DB[(SQL Server)]
 
-    MT5[MT5 provider] --> Adapters[Infrastructure adapters]
+    Market[AllTick and Twelve Data] --> Adapters[Infrastructure adapters]
     News[DataNews.io provider] --> Adapters
     Fred[FRED provider] --> Adapters
+    Analysts[Permitted analyst RSS/Atom source] --> Adapters
     OpenAI[OpenAI provider] --> Adapters
     Adapters --> App
+    App --> Evidence[Normalized evidence layer]
+    Evidence --> DB
 ```
 
-Only the MT5 adapter is active in Phase 4. It supplies read-only quotes and
-candles through `IMarketDataProvider`. The application maps them to internal
+AllTick supplies live quotes and primary candles, while Twelve Data supplies
+historical backup/reference candles. The application maps them to internal
 XAUUSD models, returns them through its own API, and persists candles through
 its own ingestion use case.
 
@@ -41,21 +45,20 @@ its own ingestion use case.
 | API | HTTP transport, composition, middleware | Application, Infrastructure |
 | Web | Owned operational interface consuming API contracts | HTTP API only |
 
-Architecture tests enforce the negative dependency rules. Domain and
-Application do not reference MetaTrader or its Python package. Provider code is
-isolated under Infrastructure.
+Architecture tests enforce the negative dependency rules. Provider code is
+isolated under Infrastructure, and the solution has no desktop-terminal or
+Python-bridge runtime dependency.
 
 ## Current operational path
 
 ```text
 Web market workspace
-  -> GET /api/mt5/status
+  -> GET /api/market-data/provider/status
   -> GET /api/market/xauusd/quote
   -> GET /api/market/xauusd/candles
   -> IMarketDataProvider
-  -> MT5 Infrastructure adapter
-  -> JSON bridge
-  -> Windows MetaTrader 5 terminal
+  -> AllTick Infrastructure adapter
+  -> AllTick WebSocket/REST
 ```
 
 For persistence:
@@ -67,7 +70,7 @@ POST /api/market/xauusd/candles/sync
   -> normalized, incremental, idempotent SQL write
 ```
 
-No part of that flow opens the MT5 interface for the user, and no order
+No part of that flow opens a provider interface for the user, and no order
 operation is exposed.
 
 ## Deterministic and AI responsibilities
@@ -100,5 +103,12 @@ AI confidence will never be presented as measured historical accuracy.
 - External provider types and credentials cannot enter Domain or Application.
 - Historical evidence and measured statistics remain immutable and separately auditable.
 
-See [provider integration boundaries](provider-integrations.md) for the live MT5
-adapter and the provider-neutral expansion model.
+Phase 10 routes persisted market, news, economic, and analyst facts through an
+application-owned evidence contract. Availability time and validity intervals
+govern historical visibility; original timestamps and source representations
+remain traceable. Deterministic evidence packs expose identity, conflicts,
+coverage, and missing domains without performing AI reasoning. See the
+[evidence-layer architecture](evidence-layer.md).
+
+See [provider integration boundaries](provider-integrations.md) for the live
+adapters and the provider-neutral expansion model.

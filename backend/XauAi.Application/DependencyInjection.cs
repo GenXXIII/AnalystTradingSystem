@@ -1,5 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using XauAi.Application.AI;
+using XauAi.Application.Analysts;
+using XauAi.Application.Evidence;
 using XauAi.Application.MarketData;
 using XauAi.Application.News;
 using XauAi.Application.EconomicData;
@@ -17,11 +20,15 @@ public static class DependencyInjection
         services.TryAddSingleton(new TechnicalAnalysisSettings());
         services.TryAddSingleton(new NewsSettings());
         services.TryAddSingleton(new EconomicDataSettings());
+        services.TryAddSingleton(new AnalystSettings());
+        services.TryAddSingleton(new EvidenceSettings());
+        services.TryAddSingleton(new AiInterpretationSettings());
         services.AddSingleton<IMarketSessionCalendar, DefaultMarketSessionCalendar>();
         services.AddScoped<IPlatformStatusService, PlatformStatusService>();
         services.AddScoped<IMarketDataSynchronizationService, MarketDataSynchronizationService>();
         services.AddScoped<IMarketDataIngestionService, MarketDataIngestionService>();
         services.AddScoped<IMarketDataQueryService, MarketDataQueryService>();
+        services.AddScoped<IMarketDataQualityService, MarketDataQualityService>();
         services.AddScoped<IIndicatorCalculator, IndicatorCalculator>();
         services.AddScoped<ICandlestickAnalyzer, CandlestickAnalyzer>();
         services.AddScoped<IMarketStructureAnalyzer, MarketStructureAnalyzer>();
@@ -37,6 +44,61 @@ public static class DependencyInjection
         services.AddScoped<IEconomicDataSynchronizationService, EconomicDataSynchronizationService>();
         services.AddScoped<IEconomicDataQueryService, EconomicDataQueryService>();
         services.AddSingleton<IEconomicRetryDelay, EconomicRetryDelay>();
+        services.AddScoped<IAnalystRelevanceFilter, AnalystRelevanceFilter>();
+        services.AddScoped<IAnalystItemNormalizer, AnalystItemNormalizer>();
+        services.AddScoped<IAnalystSynchronizationService, AnalystSynchronizationService>();
+        services.AddScoped<IAnalystQueryService, AnalystQueryService>();
+        services.AddSingleton<IAnalystRetryDelay, AnalystRetryDelay>();
+        services.AddScoped<IEvidenceNormalizer, EvidenceNormalizer>();
+        services.AddScoped<IEvidenceIngestionService, EvidenceIngestionService>();
+        services.AddScoped<IEvidenceQueryService, EvidenceQueryService>();
+        services.AddSingleton<IAiEvidenceSelector, AiEvidenceSelector>();
+        services.AddSingleton<IAiEvidenceCompressor, AiEvidenceCompressor>();
+        services.AddSingleton<IAiResponseValidator, AiResponseValidator>();
+        services.AddSingleton<IAiRequestGate, AiRequestGate>();
+        services.AddSingleton<IAiInterpretationExecutionGate, AiInterpretationExecutionGate>();
+        services.AddSingleton<IAiSpecialist>(serviceProvider => new ConfiguredAiSpecialist(
+            AiSpecialist.News,
+            serviceProvider.GetRequiredService<AiSpecialistCatalog>(),
+            serviceProvider.GetRequiredService<IAiProviderFactory>(),
+            serviceProvider.GetRequiredService<IAiRequestGate>()));
+        services.AddSingleton<IAiSpecialist>(serviceProvider => new ConfiguredAiSpecialist(
+            AiSpecialist.Candle,
+            serviceProvider.GetRequiredService<AiSpecialistCatalog>(),
+            serviceProvider.GetRequiredService<IAiProviderFactory>(),
+            serviceProvider.GetRequiredService<IAiRequestGate>()));
+        services.AddSingleton<IAiSpecialist>(serviceProvider => new ConfiguredAiSpecialist(
+            AiSpecialist.Structure,
+            serviceProvider.GetRequiredService<AiSpecialistCatalog>(),
+            serviceProvider.GetRequiredService<IAiProviderFactory>(),
+            serviceProvider.GetRequiredService<IAiRequestGate>()));
+        services.AddSingleton<IAiSpecialist>(serviceProvider => new ConfiguredAiSpecialist(
+            AiSpecialist.Liquidity,
+            serviceProvider.GetRequiredService<AiSpecialistCatalog>(),
+            serviceProvider.GetRequiredService<IAiProviderFactory>(),
+            serviceProvider.GetRequiredService<IAiRequestGate>()));
+        services.AddSingleton<IAiSpecialist>(serviceProvider => new ConfiguredAiSpecialist(
+            AiSpecialist.Flow,
+            serviceProvider.GetRequiredService<AiSpecialistCatalog>(),
+            serviceProvider.GetRequiredService<IAiProviderFactory>(),
+            serviceProvider.GetRequiredService<IAiRequestGate>()));
+        services.AddSingleton<IAiSpecialist>(serviceProvider => new ConfiguredAiSpecialist(
+            AiSpecialist.Ktr,
+            serviceProvider.GetRequiredService<AiSpecialistCatalog>(),
+            serviceProvider.GetRequiredService<IAiProviderFactory>(),
+            serviceProvider.GetRequiredService<IAiRequestGate>()));
+        services.AddSingleton<IAiSpecialist>(serviceProvider => new ConfiguredAiSpecialist(
+            AiSpecialist.Risk,
+            serviceProvider.GetRequiredService<AiSpecialistCatalog>(),
+            serviceProvider.GetRequiredService<IAiProviderFactory>(),
+            serviceProvider.GetRequiredService<IAiRequestGate>()));
+        services.AddSingleton<IAiSpecialist>(serviceProvider => new ConfiguredAiSpecialist(
+            AiSpecialist.Master,
+            serviceProvider.GetRequiredService<AiSpecialistCatalog>(),
+            serviceProvider.GetRequiredService<IAiProviderFactory>(),
+            serviceProvider.GetRequiredService<IAiRequestGate>()));
+        services.AddScoped<IAiSpecialistRunner, AiSpecialistRunner>();
+        services.AddScoped<IAiInterpretationService, AiInterpretationService>();
 
         return services;
     }

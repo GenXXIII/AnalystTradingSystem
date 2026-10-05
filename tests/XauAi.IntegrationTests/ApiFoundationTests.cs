@@ -56,11 +56,11 @@ public sealed class ApiFoundationTests(ApiFactory factory) : IClassFixture<ApiFa
     }
 
     [Fact]
-    public async Task Mt5_status_is_safe_and_disabled_by_default()
+    public async Task Market_data_provider_status_is_safe_and_disabled_by_default()
     {
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync("/api/mt5/status");
+        using var response = await client.GetAsync("/api/market-data/provider/status");
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -70,7 +70,7 @@ public sealed class ApiFoundationTests(ApiFactory factory) : IClassFixture<ApiFa
     }
 
     [Fact]
-    public async Task Mt5_quote_returns_safe_disabled_error_by_default()
+    public async Task Market_quote_returns_safe_disabled_error_by_default()
     {
         using var client = factory.CreateClient();
 
@@ -78,7 +78,7 @@ public sealed class ApiFoundationTests(ApiFactory factory) : IClassFixture<ApiFa
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-        Assert.Equal("MT5_DISABLED", body.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("MARKET_DATA_PROVIDER_DISABLED", body.GetProperty("error").GetProperty("code").GetString());
         Assert.False(body.TryGetProperty("stackTrace", out _));
     }
 
@@ -96,19 +96,129 @@ public sealed class ApiFoundationTests(ApiFactory factory) : IClassFixture<ApiFa
     }
 
     [Fact]
+    public async Task Analyst_status_is_safe_and_disabled_by_default()
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/analyst-predictions/status");
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("Disabled", body.GetProperty("data").GetProperty("provider").GetProperty("state").GetString());
+        Assert.False(body.GetProperty("data").GetProperty("provider").GetProperty("enabled").GetBoolean());
+        Assert.Equal(0, body.GetProperty("data").GetProperty("storedPredictions").GetInt32());
+        Assert.False(body.GetProperty("data").TryGetProperty("apiKey", out _));
+    }
+
+    [Fact]
+    public async Task Analyst_prediction_query_enforces_maximum_page_size()
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/analyst-predictions?pageSize=501");
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("ANALYST_REQUEST_INVALID", body.GetProperty("error").GetProperty("code").GetString());
+        Assert.False(body.TryGetProperty("stackTrace", out _));
+    }
+
+    [Fact]
+    public async Task Evidence_query_returns_safe_database_unavailable_error_by_default()
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/evidence?instrument=XAUUSD");
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("EVIDENCE_DATABASE_DISABLED", body.GetProperty("error").GetProperty("code").GetString());
+        Assert.False(body.TryGetProperty("stackTrace", out _));
+    }
+
+    [Fact]
+    public async Task Evidence_pack_rejects_future_analysis_time_before_querying_storage()
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync(
+            "/api/evidence/pack?instrument=XAUUSD&primaryTimeframe=M15&analysisTime=2099-01-01T00%3A00%3A00Z");
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("EVIDENCE_REQUEST_INVALID", body.GetProperty("error").GetProperty("code").GetString());
+        Assert.False(body.TryGetProperty("stackTrace", out _));
+    }
+
+    [Fact]
+    public async Task Ai_specialist_configuration_is_independent_safe_and_disabled_by_default()
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/ai-interpretations/specialists");
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var specialists = body.GetProperty("data");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(8, specialists.GetArrayLength());
+        Assert.All(specialists.EnumerateArray(), specialist =>
+        {
+            Assert.False(specialist.GetProperty("enabled").GetBoolean());
+            Assert.False(specialist.GetProperty("hasApiKey").GetBoolean());
+            Assert.False(specialist.TryGetProperty("apiKey", out _));
+        });
+    }
+
+    [Fact]
+    public async Task Ai_interpretation_rejects_future_analysis_time_before_provider_or_storage_access()
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.PostAsJsonAsync("/api/ai-interpretations", new
+        {
+            instrument = "XAUUSD",
+            specialist = "news",
+            interpretationType = "newsEvent",
+            analysisTimeUtc = "2099-01-01T00:00:00Z",
+            lookbackHours = 24
+        });
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("AI_INTERPRETATION_REQUEST_INVALID", body.GetProperty("error").GetProperty("code").GetString());
+        Assert.False(body.TryGetProperty("stackTrace", out _));
+    }
+
+    [Fact]
+    public async Task Ai_interpretation_query_returns_safe_database_disabled_error_by_default()
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/ai-interpretations?instrument=XAUUSD");
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("AI_INTERPRETATION_DATABASE_DISABLED", body.GetProperty("error").GetProperty("code").GetString());
+        Assert.False(body.TryGetProperty("stackTrace", out _));
+    }
+
+    [Fact]
     public async Task Server_secrets_are_absent_from_responses_and_logs()
     {
         const string sentinelSecret = "integration-secret-must-never-leak";
         var loggerProvider = new RecordingLoggerProvider();
         using var configuredFactory = factory.WithWebHostBuilder(builder =>
         {
-            builder.UseSetting("AI:ApiKey", sentinelSecret);
+            builder.UseSetting("AiSpecialists:News:ApiKey", sentinelSecret);
             builder.ConfigureLogging(logging => logging.AddProvider(loggerProvider));
         });
         using var client = configuredFactory.CreateClient();
 
         var responseBodies = new List<string>();
-        foreach (var path in new[] { "/health", "/api/system/status", "/does-not-exist" })
+        foreach (var path in new[]
+                 {
+                     "/health", "/api/system/status", "/api/ai-interpretations/specialists", "/does-not-exist"
+                 })
         {
             using var response = await client.GetAsync(path);
             responseBodies.Add(await response.Content.ReadAsStringAsync());

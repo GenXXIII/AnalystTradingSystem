@@ -2,7 +2,10 @@ using XauAi.Api.Models;
 using XauAi.Application.MarketData;
 using XauAi.Application.News;
 using XauAi.Application.EconomicData;
+using XauAi.Application.Analysts;
+using XauAi.Application.Evidence;
 using XauAi.Application.TechnicalAnalysis;
+using XauAi.Application.AI;
 
 namespace XauAi.Api.Middleware;
 
@@ -80,6 +83,54 @@ public sealed class ExceptionHandlingMiddleware(
                 exception.SafeMessage,
                 context.TraceIdentifier));
         }
+        catch (AnalystException exception) when (!context.Response.HasStarted)
+        {
+            logger.LogWarning(
+                exception,
+                "Analyst-data request failed with code {ErrorCode} for {Method} {Path}",
+                exception.Code,
+                context.Request.Method,
+                context.Request.Path);
+
+            context.Response.Clear();
+            context.Response.StatusCode = AnalystStatusCode(exception.Code);
+            await context.Response.WriteAsJsonAsync(ApiErrorResponse.Create(
+                exception.Code,
+                exception.SafeMessage,
+                context.TraceIdentifier));
+        }
+        catch (EvidenceException exception) when (!context.Response.HasStarted)
+        {
+            logger.LogWarning(
+                exception,
+                "Evidence request failed with code {ErrorCode} for {Method} {Path}",
+                exception.Code,
+                context.Request.Method,
+                context.Request.Path);
+
+            context.Response.Clear();
+            context.Response.StatusCode = EvidenceStatusCode(exception.Code);
+            await context.Response.WriteAsJsonAsync(ApiErrorResponse.Create(
+                exception.Code,
+                exception.SafeMessage,
+                context.TraceIdentifier));
+        }
+        catch (AiInterpretationException exception) when (!context.Response.HasStarted)
+        {
+            logger.LogWarning(
+                exception,
+                "AI interpretation request failed with code {ErrorCode} for {Method} {Path}",
+                exception.Code,
+                context.Request.Method,
+                context.Request.Path);
+
+            context.Response.Clear();
+            context.Response.StatusCode = AiInterpretationStatusCode(exception.Code);
+            await context.Response.WriteAsJsonAsync(ApiErrorResponse.Create(
+                exception.Code,
+                exception.SafeMessage,
+                context.TraceIdentifier));
+        }
         catch (BadHttpRequestException exception) when (!context.Response.HasStarted)
         {
             logger.LogWarning(
@@ -115,16 +166,15 @@ public sealed class ExceptionHandlingMiddleware(
         MarketDataErrorCodes.InvalidRequest
             or MarketDataErrorCodes.QueryLimitExceeded
             or MarketDataErrorCodes.QueryRangeTooLarge => StatusCodes.Status400BadRequest,
-        MarketDataErrorCodes.SymbolNotFound => StatusCodes.Status404NotFound,
-        MarketDataErrorCodes.Timeout => StatusCodes.Status504GatewayTimeout,
-        MarketDataErrorCodes.Disabled
-            or MarketDataErrorCodes.ConfigurationInvalid
-            or MarketDataErrorCodes.TerminalNotFound
-            or MarketDataErrorCodes.InitializationFailed
-            or MarketDataErrorCodes.ConnectionFailed
-            or MarketDataErrorCodes.AuthenticationFailed
-            or MarketDataErrorCodes.DataRequestFailed
-            or MarketDataErrorCodes.Unavailable
+        MarketDataErrorCodes.ProviderSymbolNotFound => StatusCodes.Status404NotFound,
+        MarketDataErrorCodes.ProviderRateLimited => StatusCodes.Status429TooManyRequests,
+        MarketDataErrorCodes.ProviderTimeout => StatusCodes.Status504GatewayTimeout,
+        MarketDataErrorCodes.ProviderDisabled
+            or MarketDataErrorCodes.ProviderConfigurationInvalid
+            or MarketDataErrorCodes.ProviderConnectionFailed
+            or MarketDataErrorCodes.ProviderAuthenticationFailed
+            or MarketDataErrorCodes.ProviderDataRequestFailed
+            or MarketDataErrorCodes.ProviderUnavailable
             or MarketDataErrorCodes.DatabaseDisabled => StatusCodes.Status503ServiceUnavailable,
         _ => StatusCodes.Status500InternalServerError
     };
@@ -162,6 +212,47 @@ public sealed class ExceptionHandlingMiddleware(
             or EconomicDataErrorCodes.DatabaseDisabled
             or EconomicDataErrorCodes.AuthenticationFailed
             or EconomicDataErrorCodes.ProviderUnavailable => StatusCodes.Status503ServiceUnavailable,
+        _ => StatusCodes.Status500InternalServerError
+    };
+
+    private static int AnalystStatusCode(string code) => code switch
+    {
+        AnalystErrorCodes.InvalidRequest => StatusCodes.Status400BadRequest,
+        AnalystErrorCodes.NotFound => StatusCodes.Status404NotFound,
+        AnalystErrorCodes.RateLimited => StatusCodes.Status429TooManyRequests,
+        AnalystErrorCodes.Timeout => StatusCodes.Status504GatewayTimeout,
+        AnalystErrorCodes.InvalidResponse => StatusCodes.Status502BadGateway,
+        AnalystErrorCodes.Disabled
+            or AnalystErrorCodes.DatabaseDisabled
+            or AnalystErrorCodes.AuthenticationFailed
+            or AnalystErrorCodes.ProviderUnavailable => StatusCodes.Status503ServiceUnavailable,
+        _ => StatusCodes.Status500InternalServerError
+    };
+
+    private static int EvidenceStatusCode(string code) => code switch
+    {
+        EvidenceErrorCodes.InvalidRequest
+            or EvidenceErrorCodes.InvalidRecord => StatusCodes.Status400BadRequest,
+        EvidenceErrorCodes.NotFound => StatusCodes.Status404NotFound,
+        EvidenceErrorCodes.DatabaseDisabled => StatusCodes.Status503ServiceUnavailable,
+        _ => StatusCodes.Status500InternalServerError
+    };
+
+    private static int AiInterpretationStatusCode(string code) => code switch
+    {
+        AiInterpretationErrorCodes.InvalidRequest => StatusCodes.Status400BadRequest,
+        AiInterpretationErrorCodes.NotFound => StatusCodes.Status404NotFound,
+        AiInterpretationErrorCodes.RateLimited => StatusCodes.Status429TooManyRequests,
+        AiInterpretationErrorCodes.Timeout => StatusCodes.Status504GatewayTimeout,
+        AiInterpretationErrorCodes.InvalidResponse => StatusCodes.Status502BadGateway,
+        AiInterpretationErrorCodes.NoEvidence => StatusCodes.Status422UnprocessableEntity,
+        AiInterpretationErrorCodes.SpecialistDisabled
+            or AiInterpretationErrorCodes.SpecialistNotConfigured
+            or AiInterpretationErrorCodes.ProviderNotSupported
+            or AiInterpretationErrorCodes.AuthenticationFailed
+            or AiInterpretationErrorCodes.Unavailable
+            or AiInterpretationErrorCodes.TokenLimit
+            or AiInterpretationErrorCodes.DatabaseDisabled => StatusCodes.Status503ServiceUnavailable,
         _ => StatusCodes.Status500InternalServerError
     };
 }

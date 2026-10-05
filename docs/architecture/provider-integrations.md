@@ -11,19 +11,42 @@ owns:
 - deterministic calculations, backtests, and performance statistics;
 - evidence traceability, risk rules, and future signal validation.
 
-MT5, NewsData.io, FRED, and OpenAI are providers at the Infrastructure edge.
+AllTick, Twelve Data, NewsData.io, FRED, configured analyst RSS/Atom sources,
+and OpenAI are providers at the Infrastructure edge.
 Provider SDK objects, field names, credentials, and UI concepts must not leak
 into Domain or Application.
 
 | Provider | Supplied capability | Internal boundary | Status |
 | --- | --- | --- | --- |
-| MT5 | Quotes and candles | `IMarketDataProvider` | Phase 4 adapter; Phase 5 pipeline active |
+| AllTick | Live quotes/ticks and candles | `IMarketDataProvider` | Default Docker-native market adapter |
+| Twelve Data | Historical backup/reference candles | `IReferenceMarketDataProvider` | Independent REST reference adapter |
 | NewsData.io | News evidence | `INewsProvider` | Phase 7 adapter and pipeline active |
 | FRED | Macroeconomic observations | `IEconomicDataProvider` | Phase 8 adapter and pipeline active |
+| Permitted RSS/Atom source | Analyst publications and claims | `IAnalystDataProvider` | Phase 9 adapter; disabled until a legitimate feed is configured |
 | OpenAI | Evidence-grounded reasoning | Future AI provider contract | Future phase |
 
 Replacing a provider should require a new Infrastructure adapter, configuration,
 and mapping tests—not a rewrite of the web console or core use cases.
+
+## Phase 9 analyst-data flow
+
+```text
+Permitted RSS/Atom feed
+        |
+IAnalystDataProvider adapter
+        |
+relevance -> conservative claim extraction -> identity/version deduplication
+        |
+SQL source/analyst/publication/prediction + durable run/state
+        |
+/api/analyst-* application contracts
+```
+
+Reads come from SQL and never refetch a provider feed. Exact republications are
+linked and do not become duplicate independent opinions. No AI interpretation,
+consensus, accuracy score, or signal is produced. See
+[analyst-data architecture](analyst-data.md) and the
+[development guide](../development/analyst-data.md).
 
 ## Phase 8 economic-data flow
 
@@ -71,23 +94,27 @@ Analyst console (port 3001)
         |
 normalized HTTP JSON
         |
-API (Windows, port 5081)
+API container (port 5081)
         |
 IMarketDataProvider / IMarketDataSynchronizationService
         |
-Mt5MarketDataProvider
+AllTickMarketDataProvider    TwelveDataMarketDataProvider
         |                         |
-Python JSON bridge          EF candle store
-        |                         |
-MT5 Desktop terminal        SQL Server :14330
+WebSocket + REST          REST M1 -> local aggregation
+        |_________________________|
+                    |
+             EF candle store
+                    |
+            SQL Server :14330
 ```
 
 The synchronization service validates, batches, deduplicates, detects candidate
 gaps, records durable run/state information, and persists normalized candles.
-The bridge accepts only `status`, `quote`, and `candles` operations. It has no
-order-send, position-modification, or close-trade operation. The provider maps
-the internal `XAUUSD` identity to a configurable broker symbol and returns
-normalized application records.
+The primary adapter maps internal `XAUUSD` to AllTick `GOLD`. WebSocket ticks
+keep provisional candles live; official REST candles reconcile and complete
+them before analysis consumes them. Twelve Data maps `XAUUSD` to `XAU/USD`,
+backfills M1 candles, and locally aggregates the higher timeframes. No adapter exposes order-send,
+position-modification, or close-trade operations.
 
 ## Data rules
 
@@ -97,47 +124,9 @@ normalized application records.
 - Tick volume and real volume remain separate nullable values.
 - A candle is uniquely identified by instrument, timeframe, open time, and provider.
 - A repeated overlapping sync skips complete duplicates and may update an incomplete candle.
-- Credentials are passed to the bridge process but never returned, logged, or stored in market records.
-
-## Windows runtime
-
-The Python MetaTrader5 package communicates with MetaTrader 5 Desktop. The live
-adapter therefore runs on Windows where `terminal64.exe` is installed. A Linux
-Docker API cannot access that Windows terminal directly.
-
-Install the pinned bridge dependency:
-
-```powershell
-py -3 -m pip install -r scripts/mt5/requirements.txt
-```
-
-With SQL Server running in Docker and the ignored `.env` configured:
-
-```powershell
-docker compose stop api
-./scripts/start-mt5-api.ps1
-```
-
-The startup probe reports a safe provider state. Expected failure states include
-disabled, terminal missing, invalid configuration, authentication failure, and
-connection failure. None includes the configured password.
+- Provider credentials are server-only and never returned, logged, or stored in market records.
 
 ## Opt-in live verification
-
-Set the MT5 environment values and a SQL administrator test connection in the
-current process, then run:
-
-```powershell
-$env:XAUAI_RUN_MT5_INTEGRATION = "true"
-$env:XAUAI_TEST_SQLSERVER_CONNECTION_STRING = "YOUR_SQL_TEST_CONNECTION"
-dotnet test tests/XauAi.IntegrationTests `
-  --configuration Release `
-  --filter FullyQualifiedName~Mt5LiveIntegrationTests
-```
-
-The test creates a temporary database, connects to the live terminal, retrieves
-a quote, synchronizes H1 and M15 candles, repeats and incrementally extends H1,
-verifies UTC storage, state health, and idempotence, then deletes the database.
 
 NewsData live verification is separately opt-in because it consumes external
 provider quota:

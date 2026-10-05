@@ -17,6 +17,14 @@ public sealed class XauAiDbContext(DbContextOptions<XauAiDbContext> options) : D
 {
     public DbSet<EvidenceRecord> EvidenceRecords => Set<EvidenceRecord>();
 
+    public DbSet<EvidenceRelation> EvidenceRelations => Set<EvidenceRelation>();
+
+    public DbSet<EvidenceCluster> EvidenceClusters => Set<EvidenceCluster>();
+
+    public DbSet<EvidenceClusterMember> EvidenceClusterMembers => Set<EvidenceClusterMember>();
+
+    public DbSet<EvidenceQuarantineRecord> EvidenceQuarantineRecords => Set<EvidenceQuarantineRecord>();
+
     public DbSet<DataProvider> DataProviders => Set<DataProvider>();
 
     public DbSet<Instrument> Instruments => Set<Instrument>();
@@ -52,6 +60,16 @@ public sealed class XauAiDbContext(DbContextOptions<XauAiDbContext> options) : D
     public DbSet<EconomicSyncRun> EconomicSyncRuns => Set<EconomicSyncRun>();
 
     public DbSet<AnalystStatement> AnalystStatements => Set<AnalystStatement>();
+
+    public DbSet<AnalystSource> AnalystSources => Set<AnalystSource>();
+
+    public DbSet<Analyst> Analysts => Set<Analyst>();
+
+    public DbSet<AnalystPublication> AnalystPublications => Set<AnalystPublication>();
+
+    public DbSet<AnalystSyncState> AnalystSyncStates => Set<AnalystSyncState>();
+
+    public DbSet<AnalystSyncRun> AnalystSyncRuns => Set<AnalystSyncRun>();
 
     public DbSet<AiAnalysis> AiAnalyses => Set<AiAnalysis>();
 

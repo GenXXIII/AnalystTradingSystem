@@ -3,6 +3,7 @@ using XauAi.Application.EconomicData;
 using XauAi.Domain.EconomicData;
 using XauAi.Domain.Evidence;
 using XauAi.Infrastructure.Persistence;
+using XauAi.Infrastructure.Evidence.Persistence;
 
 namespace XauAi.Infrastructure.EconomicData.Persistence;
 
@@ -24,6 +25,16 @@ internal sealed class EfEconomicObservationStore(XauAiDbContext context) : IEcon
             .Select(group => group.Last())
             .OrderBy(observation => observation.ObservationDate)
             .ToArray();
+        var series = await context.EconomicSeries.AsNoTracking()
+            .SingleAsync(value => value.Id == economicSeriesId, cancellationToken);
+        var providerKey = await context.DataProviders.AsNoTracking()
+            .Where(provider => provider.Id == series.DataProviderId)
+            .Select(provider => provider.Key)
+            .SingleAsync(cancellationToken);
+        var instrumentId = await context.Instruments.AsNoTracking()
+            .Where(instrument => instrument.Symbol == "XAUUSD" && instrument.IsActive)
+            .Select(instrument => (Guid?)instrument.Id)
+            .SingleOrDefaultAsync(cancellationToken);
         var dates = unique.Select(observation => observation.ObservationDate).ToArray();
         var existing = await context.EconomicObservations
             .Where(observation => observation.EconomicSeriesId == economicSeriesId
@@ -38,13 +49,13 @@ internal sealed class EfEconomicObservationStore(XauAiDbContext context) : IEcon
             if (!existing.TryGetValue(incoming.ObservationDate, out var current))
             {
                 var id = Guid.NewGuid();
-                context.EvidenceRecords.Add(new EvidenceRecord
-                {
-                    Id = id,
-                    Kind = "EconomicObservation",
-                    ObservedAtUtc = fetchedAtUtc,
-                    CreatedAtUtc = fetchedAtUtc
-                });
+                context.EvidenceRecords.Add(EvidenceRecordFactory.EconomicObservation(
+                    id,
+                    instrumentId,
+                    series,
+                    providerKey,
+                    incoming,
+                    fetchedAtUtc));
                 context.EconomicObservations.Add(new EconomicObservation
                 {
                     Id = id,
@@ -88,10 +99,33 @@ internal sealed class EfEconomicObservationStore(XauAiDbContext context) : IEcon
             current.RealtimeEndDate = incoming.RealtimeEndDate;
             current.FetchedAtUtc = fetchedAtUtc;
             current.UpdatedAtUtc = fetchedAtUtc;
-            var evidence = await context.EvidenceRecords.FindAsync([current.Id], cancellationToken);
-            if (evidence is not null)
+            var externalId = $"{series.ExternalSeriesId}:{incoming.ObservationDate:yyyy-MM-dd}";
+            var priorEvidence = await context.EvidenceRecords
+                .Where(record => record.SourceKey == providerKey
+                    && record.ExternalId == externalId
+                    && record.ValidToUtc == null)
+                .OrderByDescending(record => record.AvailableAtUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+            var revisionEvidence = EvidenceRecordFactory.EconomicObservation(
+                Guid.NewGuid(),
+                instrumentId,
+                series,
+                providerKey,
+                incoming,
+                fetchedAtUtc);
+            context.EvidenceRecords.Add(revisionEvidence);
+            if (priorEvidence is not null)
             {
-                evidence.ObservedAtUtc = fetchedAtUtc;
+                priorEvidence.ValidToUtc = fetchedAtUtc.ToUniversalTime();
+                priorEvidence.UpdatedAtUtc = fetchedAtUtc.ToUniversalTime();
+                context.EvidenceRelations.Add(new EvidenceRelation
+                {
+                    EvidenceId = revisionEvidence.Id,
+                    RelatedEvidenceId = priorEvidence.Id,
+                    RelationType = "Updates",
+                    Reason = "The provider supplied a revised value for the same economic observation.",
+                    CreatedAtUtc = fetchedAtUtc.ToUniversalTime()
+                });
             }
 
             updated++;

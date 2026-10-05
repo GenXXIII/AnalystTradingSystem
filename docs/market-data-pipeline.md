@@ -2,22 +2,30 @@
 
 ## Purpose and boundary
 
-Phase 5 turns the read-only MT5 adapter into a persistent and recoverable
-market-data system. SQL Server is the historical source of truth. MT5 remains a
-replaceable provider at the Infrastructure edge.
+The pipeline is a persistent and recoverable market-data system. SQL Server is
+the historical source of truth. AllTick supplies live/primary prices and
+Twelve Data supplies historical backup/reference candles.
 
 This phase does not calculate indicators, call AI models, create signals, or
-place trades. The web terminal is an owned analyst interface; it is not an MT5
-screen and exposes no order controls.
+place trades. The web terminal is an owned analyst interface and exposes no
+order controls.
 
 ## Architecture
 
 ```text
-MT5 Desktop
-    |
-Mt5MarketDataProvider
-    |
-MarketDataSynchronizationService
+AllTick WebSocket + REST          Twelve Data REST
+    |                                  |
+live/reference prices          history/backup/reference M1
+    |                                  |
+    +------------ normalization -------+
+                     |
+               candle building
+                     |
+             M1 -> M5 -> M15 -> M30
+                     |
+                 H1 -> H4 -> D1
+                     |
+MarketDataSynchronizationService / TwelveDataReferenceWorker
     |-- bounded acquisition batches
     |-- UTC and OHLC validation
     |-- forming/completed classification
@@ -36,7 +44,7 @@ MarketDataQueryService -> HTTP API -> analyst web terminal
 ```
 
 Application owns provider-neutral contracts and orchestration. Infrastructure
-owns MT5 and EF Core implementations. Domain owns the persisted entities. The
+owns AllTick, Twelve Data, and EF Core implementations. Domain owns the persisted entities. The
 API and frontend consume normalized records only.
 
 ## Synchronization flow
@@ -62,6 +70,13 @@ Repeated and overlapping requests are safe at two levels:
 
 An existing completed candle is immutable to ingestion. An existing forming
 candle may be updated by a later provider observation.
+
+For AllTick, transaction ticks update provisional forming candles in real time.
+They are deliberately stored with `IsComplete=false`, including at a timeframe
+rollover. The official `/batch-kline` response reconciles the latest two bars
+for every enabled timeframe in one request and is the only path that promotes
+those bars to completed. Signal analysis therefore never treats a locally
+aggregated WebSocket bar as authoritative.
 
 ## Validation and normalization
 
@@ -114,9 +129,12 @@ scheduler.
 ## Scheduling
 
 `MarketDataSynchronizationWorker` runs only when
-`MARKET_DATA_SYNC_ENABLED=true`. It synchronizes every configured timeframe,
-then waits `MARKET_DATA_SYNC_INTERVAL_SECONDS`. A failure in one timeframe is
-logged safely and does not prevent later timeframes from running.
+`MARKET_DATA_SYNC_ENABLED=true`. It performs restart-safe historical backfill
+for every configured timeframe. When the selected provider implements batch
+reconciliation (AllTick), each later cycle fetches the latest two bars for all
+seven timeframes in one REST request. The default 120-second cycle stays below
+the free plan's 1,000-request daily ceiling while WebSocket data remains live.
+A failure is logged safely and the next cycle continues from stored data.
 
 ## Database persistence
 
@@ -153,8 +171,8 @@ symbols/timeframes, reversed ranges, and excessive requests return safe errors.
 | `MARKET_DATA_SYMBOL` | `XAUUSD` | Provider-neutral application symbol |
 | `MARKET_DATA_TIMEFRAMES` | `M1,M5,M15,M30,H1,H4,D1` | Enabled series |
 | `MARKET_DATA_INITIAL_HISTORY_DAYS` | `7` | Bounded first synchronization |
-| `MARKET_DATA_SYNC_INTERVAL_SECONDS` | `10` | Delay between full worker cycles |
-| `MARKET_DATA_BATCH_SIZE` | `1000` | Maximum logical candles per batch |
+| `MARKET_DATA_SYNC_INTERVAL_SECONDS` | `120` | Delay between authoritative AllTick reconciliations |
+| `MARKET_DATA_BATCH_SIZE` | `500` | Maximum historical candles per provider request |
 | `MARKET_DATA_MAX_API_LIMIT` | `5000` | Maximum records returned by one read |
 | `MARKET_DATA_MAX_QUERY_RANGE_DAYS` | `366` | Maximum API/sync range |
 | `MARKET_DATA_MAX_RETRIES` | `2` | Retries after the first transient attempt |
@@ -164,6 +182,12 @@ symbols/timeframes, reversed ranges, and excessive requests return safe errors.
 
 The ignored local `.env` enables the Phase 5 worker. Credentials remain only in
 `.env` and are not exposed through these options.
+
+AllTick-specific values are `ALLTICK_ENABLED`, `ALLTICK_TOKEN`,
+`ALLTICK_APPLICATION_SYMBOL`, `ALLTICK_SYMBOL`, `ALLTICK_HTTP_BASE_URL`,
+`ALLTICK_WEBSOCKET_URL`, request/reconnect/heartbeat timeouts, quote freshness,
+real-time persistence interval, the 500-bar limit, and the 10-second minimum
+HTTP interval. Keep the token server-side; never expose it as `NEXT_PUBLIC_*`.
 
 ## Measured performance
 
@@ -184,17 +208,16 @@ objective. The current simple EF batching is sufficient for this phase.
 
 ## Troubleshooting
 
-- `MT5_TERMINAL_NOT_FOUND`: confirm the absolute Windows `terminal64.exe` path.
-- `MT5_AUTHENTICATION_FAILED`: verify login, password, and broker server in the
-  ignored `.env`; do not paste them into logs or screenshots.
-- `MT5_TIMEOUT` or connection failure: keep stored data, check terminal/network,
-  and allow the bounded next retry/cycle.
+- `MARKET_DATA_PROVIDER_DISABLED`: enable AllTick and provide a real token.
+- `MARKET_DATA_PROVIDER_AUTHENTICATION_FAILED`: verify `ALLTICK_TOKEN` without
+  writing it to logs or screenshots.
+- `MARKET_DATA_PROVIDER_RATE_LIMITED`: retain the 120-second reconciliation
+  interval and avoid repeated manual history requests on the free plan.
+- A connected stream with no fresh quote can be normal while gold is closed;
+  never convert a stale quote into a new signal.
 - `DATABASE_DISABLED`: enable SQL persistence and supply the restricted app
   connection string.
 - `MARKET_DATA_LIMIT_EXCEEDED`: lower `limit` to the configured maximum.
 - `MARKET_DATA_RANGE_TOO_LARGE`: split the request into controlled ranges.
 - Candidate gaps: check broker session/holiday availability before treating a
   gap as an outage. Never insert a synthetic candle.
-
-For live MT5, run the API on Windows using `scripts/start-mt5-api.ps1`; the
-Linux API container cannot communicate with the installed Windows terminal.

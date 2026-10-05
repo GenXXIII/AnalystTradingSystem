@@ -17,8 +17,7 @@ public sealed class OptionsValidationTests
             ["Redis:ConnectionString"] = "USER_PROVIDED_LATER",
             ["AI:ApiKey"] = "USER_PROVIDED_LATER",
             ["AI:Model"] = "MODEL_DEFINED_LATER",
-            ["MT5:Login"] = "USER_PROVIDED_LATER",
-            ["MT5:Password"] = "USER_PROVIDED_LATER",
+            ["TwelveData:ApiKey"] = "USER_PROVIDED_LATER",
             ["News:ApiKey"] = "USER_PROVIDED_LATER",
             ["EconomicData:ApiKey"] = "USER_PROVIDED_LATER",
             ["Analysts:ApiKey"] = "USER_PROVIDED_LATER"
@@ -27,7 +26,7 @@ public sealed class OptionsValidationTests
         Assert.False(Get<DatabaseOptions>(provider).Enabled);
         Assert.False(Get<RedisOptions>(provider).Enabled);
         Assert.False(Get<AiOptions>(provider).Enabled);
-        Assert.False(Get<Mt5Options>(provider).Enabled);
+        Assert.False(Get<TwelveDataOptions>(provider).Enabled);
         Assert.False(Get<NewsOptions>(provider).Enabled);
         Assert.False(Get<EconomicDataOptions>(provider).Enabled);
         Assert.False(Get<AnalystOptions>(provider).Enabled);
@@ -99,44 +98,67 @@ public sealed class OptionsValidationTests
             failure.Contains("Database:ConnectionString", StringComparison.Ordinal));
     }
 
-    [Theory]
-    [InlineData("MT5:Login")]
-    [InlineData("MT5:Password")]
-    [InlineData("MT5:Server")]
-    [InlineData("MT5:TerminalPath")]
-    public void Enabled_mt5_requires_each_connection_setting(string missingKey)
+    [Fact]
+    public void Enabled_alltick_requires_a_real_token()
     {
-        var configuration = ValidEnabledMt5Configuration();
-        configuration[missingKey] = "USER_PROVIDED_LATER";
-        using var provider = BuildProvider(configuration);
+        using var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["AllTick:Enabled"] = "true",
+            ["AllTick:Token"] = "USER_PROVIDED_LATER"
+        });
 
-        var exception = Assert.Throws<OptionsValidationException>(() => Get<Mt5Options>(provider));
+        var exception = Assert.Throws<OptionsValidationException>(() => Get<AllTickOptions>(provider));
 
-        Assert.Contains(exception.Failures, failure => failure.Contains(missingKey, StringComparison.Ordinal));
+        Assert.Contains(exception.Failures, failure => failure.Contains("AllTick:Token", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void Enabled_mt5_rejects_non_executable_terminal_path()
+    public void Enabled_alltick_accepts_docker_native_configuration_without_connecting()
     {
-        var configuration = ValidEnabledMt5Configuration();
-        configuration["MT5:TerminalPath"] = "terminal.txt";
-        using var provider = BuildProvider(configuration);
+        using var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["AllTick:Enabled"] = "true",
+            ["AllTick:Token"] = "test-only-token",
+            ["AllTick:Symbol"] = "GOLD"
+        });
 
-        var exception = Assert.Throws<OptionsValidationException>(() => Get<Mt5Options>(provider));
-
-        Assert.Contains(exception.Failures, failure =>
-            failure.Contains("MT5:TerminalPath", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void Enabled_mt5_accepts_complete_configuration_without_connecting()
-    {
-        using var provider = BuildProvider(ValidEnabledMt5Configuration());
-
-        var options = Get<Mt5Options>(provider);
+        var options = Get<AllTickOptions>(provider);
 
         Assert.True(options.Enabled);
-        Assert.Equal("XAUUSD.broker", options.Symbol);
+        Assert.Equal("GOLD", options.Symbol);
+        Assert.Equal(500, options.MaxBarsPerRequest);
+    }
+
+    [Fact]
+    public void Enabled_twelve_data_requires_a_real_api_key()
+    {
+        using var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["TwelveData:Enabled"] = "true",
+            ["TwelveData:ApiKey"] = "USER_PROVIDED_LATER"
+        });
+
+        var exception = Assert.Throws<OptionsValidationException>(() => Get<TwelveDataOptions>(provider));
+
+        Assert.Contains(exception.Failures, failure => failure.Contains("TwelveData:ApiKey", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Enabled_twelve_data_accepts_bounded_reference_configuration_without_connecting()
+    {
+        using var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["TwelveData:Enabled"] = "true",
+            ["TwelveData:ApiKey"] = "test-only-key",
+            ["TwelveData:Symbol"] = "XAU/USD",
+            ["TwelveData:ProviderKey"] = "twelvedata"
+        });
+
+        var options = Get<TwelveDataOptions>(provider);
+
+        Assert.True(options.Enabled);
+        Assert.Equal("XAU/USD", options.Symbol);
+        Assert.Equal(5000, options.MaximumPointsPerRequest);
     }
 
     [Fact]
@@ -219,6 +241,43 @@ public sealed class OptionsValidationTests
     }
 
     [Fact]
+    public void Enabled_analyst_data_requires_supported_rss_configuration()
+    {
+        using var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["Analysts:Enabled"] = "true",
+            ["Analysts:Provider"] = "UnsupportedProvider",
+            ["Analysts:SourceType"] = "Manual",
+            ["Analysts:BaseUrl"] = "not-a-url"
+        });
+
+        var exception = Assert.Throws<OptionsValidationException>(() => Get<AnalystOptions>(provider));
+
+        Assert.Contains(exception.Failures, failure => failure.Contains("Analysts:Provider", StringComparison.Ordinal));
+        Assert.Contains(exception.Failures, failure => failure.Contains("Analysts:SourceType", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Enabled_analyst_data_accepts_bounded_rss_configuration_without_calling_source()
+    {
+        using var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["Analysts:Enabled"] = "true",
+            ["Analysts:Provider"] = "RssAtom",
+            ["Analysts:ProviderKey"] = "analyst-rss",
+            ["Analysts:SourceType"] = "RssFeed",
+            ["Analysts:BaseUrl"] = "https://research.example.test/gold.xml",
+            ["Analysts:ProviderPageSize"] = "50"
+        });
+
+        var options = Get<AnalystOptions>(provider);
+
+        Assert.True(options.Enabled);
+        Assert.Equal("RssAtom", options.Provider);
+        Assert.Equal(50, options.ProviderPageSize);
+    }
+
+    [Fact]
     public void Market_data_rejects_unknown_timeframes_and_unsafe_limits()
     {
         using var provider = BuildProvider(new Dictionary<string, string?>
@@ -233,6 +292,24 @@ public sealed class OptionsValidationTests
         Assert.Contains(exception.Failures, failure => failure.Contains("MarketData:Timeframes", StringComparison.Ordinal));
         Assert.Contains(exception.Failures, failure => failure.Contains("MarketData:BatchSize", StringComparison.Ordinal));
         Assert.Contains(exception.Failures, failure => failure.Contains("MarketData:MaxApiLimit", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Alltick_market_data_enforces_free_tier_batch_and_polling_limits()
+    {
+        using var provider = BuildProvider(new Dictionary<string, string?>
+        {
+            ["MarketData:Provider"] = "AllTick",
+            ["MarketData:ProviderKey"] = "alltick",
+            ["MarketData:SyncEnabled"] = "true",
+            ["MarketData:SyncIntervalSeconds"] = "10",
+            ["MarketData:BatchSize"] = "1000"
+        });
+
+        var exception = Assert.Throws<OptionsValidationException>(() => Get<MarketDataOptions>(provider));
+
+        Assert.Contains(exception.Failures, failure => failure.Contains("MarketData:SyncIntervalSeconds", StringComparison.Ordinal));
+        Assert.Contains(exception.Failures, failure => failure.Contains("MarketData:BatchSize", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -290,17 +367,4 @@ public sealed class OptionsValidationTests
             ["AI:DailyRequestLimit"] = "10"
         };
 
-    private static Dictionary<string, string?> ValidEnabledMt5Configuration() =>
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["MT5:Enabled"] = "true",
-            ["MT5:Login"] = "12345678",
-            ["MT5:Password"] = "unit-test-password",
-            ["MT5:Server"] = "Broker-Demo",
-            ["MT5:TerminalPath"] = Path.GetFullPath("terminal64.exe"),
-            ["MT5:ApplicationSymbol"] = "XAUUSD",
-            ["MT5:Symbol"] = "XAUUSD.broker",
-            ["MT5:TimeZone"] = "UTC",
-            ["MT5:PythonExecutable"] = "py"
-        };
 }

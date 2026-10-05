@@ -7,7 +7,6 @@ public enum MarketDataProviderState
     Connected,
     Disconnected,
     ConfigurationError,
-    TerminalNotFound,
     AuthenticationFailed,
     ConnectionFailed
 }
@@ -16,11 +15,9 @@ public sealed record MarketDataProviderStatus(
     string Provider,
     MarketDataProviderState State,
     bool Enabled,
-    bool TerminalAvailable,
     bool Connected,
     string ApplicationSymbol,
     string ProviderSymbol,
-    string? AccountLogin,
     string? Server,
     string Message,
     DateTimeOffset CheckedAtUtc);
@@ -47,7 +44,8 @@ public sealed record MarketCandleSnapshot(
     decimal? Spread,
     bool IsComplete,
     string SourceTimeZone,
-    DateTimeOffset FetchedAtUtc);
+    DateTimeOffset FetchedAtUtc,
+    string ProviderKey = "");
 
 public sealed record StoredCandleCursor(DateTimeOffset OpenTimeUtc, bool IsComplete);
 

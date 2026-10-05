@@ -8,7 +8,7 @@ import type {
 
 export async function getMarketProviderStatus(): Promise<MarketProviderStatus> {
   const response = await apiClient.get<ApiSuccessResponse<MarketProviderStatus>>(
-    "/api/mt5/status",
+    "/api/market-data/provider/status",
   );
 
   return response.data;

@@ -2,16 +2,16 @@ namespace XauAi.Application.MarketData;
 
 public static class MarketDataErrorCodes
 {
-    public const string Disabled = "MT5_DISABLED";
-    public const string ConfigurationInvalid = "MT5_CONFIGURATION_INVALID";
-    public const string TerminalNotFound = "MT5_TERMINAL_NOT_FOUND";
-    public const string InitializationFailed = "MT5_INITIALIZATION_FAILED";
-    public const string ConnectionFailed = "MT5_CONNECTION_FAILED";
-    public const string AuthenticationFailed = "MT5_AUTHENTICATION_FAILED";
-    public const string SymbolNotFound = "MT5_SYMBOL_NOT_FOUND";
-    public const string DataRequestFailed = "MT5_DATA_REQUEST_FAILED";
-    public const string Timeout = "MT5_TIMEOUT";
-    public const string Unavailable = "MT5_UNAVAILABLE";
+    public const string ProviderDisabled = "MARKET_DATA_PROVIDER_DISABLED";
+    public const string ProviderConfigurationInvalid = "MARKET_DATA_PROVIDER_CONFIGURATION_INVALID";
+    public const string ProviderConnectionFailed = "MARKET_DATA_PROVIDER_CONNECTION_FAILED";
+    public const string ProviderAuthenticationFailed = "MARKET_DATA_PROVIDER_AUTHENTICATION_FAILED";
+    public const string ProviderSymbolNotFound = "MARKET_DATA_PROVIDER_SYMBOL_NOT_FOUND";
+    public const string ProviderDataRequestFailed = "MARKET_DATA_PROVIDER_REQUEST_FAILED";
+    public const string ProviderRateLimited = "MARKET_DATA_PROVIDER_RATE_LIMITED";
+    public const string ProviderTimeout = "MARKET_DATA_PROVIDER_TIMEOUT";
+    public const string ProviderUnavailable = "MARKET_DATA_PROVIDER_UNAVAILABLE";
+
     public const string InvalidRequest = "MARKET_DATA_REQUEST_INVALID";
     public const string DatabaseDisabled = "DATABASE_DISABLED";
     public const string QueryLimitExceeded = "MARKET_DATA_LIMIT_EXCEEDED";

@@ -2,7 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using XauAi.Domain.Analysts;
+using XauAi.Domain.AI;
 using XauAi.Domain.EconomicData;
+using XauAi.Domain.Evidence;
 using XauAi.Domain.Market;
 using XauAi.Domain.News;
 using XauAi.Domain.ReferenceData;
@@ -24,10 +26,12 @@ public sealed class PersistenceModelTests
 
         var expectedTables = new[]
         {
-            "EvidenceRecords", "DataProviders", "Instruments", "Timeframes",
+            "EvidenceRecords", "EvidenceRelations", "EvidenceClusters", "EvidenceClusterMembers",
+            "EvidenceQuarantineRecords", "DataProviders", "Instruments", "Timeframes",
             "MarketCandles", "TechnicalObservations", "NewsArticles", "NewsArticleContents",
             "NewsCollectionStates", "NewsCollectionRuns",
-            "EconomicEvents", "AnalystStatements", "AiAnalyses", "AiAnalysisEvidence",
+            "EconomicEvents", "AnalystSources", "Analysts", "AnalystPublications", "AnalystStatements",
+            "AnalystSyncStates", "AnalystSyncRuns", "AiAnalyses", "AiAnalysisEvidence",
             "EconomicSeries", "EconomicObservations", "EconomicObservationRevisions",
             "EconomicSyncStates", "EconomicSyncRuns",
             "Strategies", "StrategyVersions", "StrategyEvaluations", "StrategyEvaluationEvidence",
@@ -127,8 +131,46 @@ public sealed class PersistenceModelTests
         var observation = _dbContext.GetService<IDesignTimeModel>().Model.FindEntityType(typeof(EconomicObservation));
         Assert.Equal("decimal(28,8)", observation?.FindProperty(nameof(EconomicObservation.Value))?.GetColumnType());
         AssertIndexes<AnalystStatement>(
-            "UX_AnalystStatements_Provider_ExternalId",
-            "IX_AnalystStatements_Instrument_PublishedAtUtc");
+            "UX_AnalystStatements_Publication_ExternalId",
+            "UX_AnalystStatements_Publication_ClaimHash",
+            "IX_AnalystStatements_Instrument_PublishedAtUtc",
+            "IX_AnalystStatements_Source_PublishedAtUtc",
+            "IX_AnalystStatements_Analyst_PublishedAtUtc",
+            "IX_AnalystStatements_Direction_PublishedAtUtc");
+        AssertIndexes<AnalystSource>("UX_AnalystSources_Provider_IdentityHash");
+        AssertIndexes<Analyst>("UX_Analysts_Source_IdentityHash");
+        AssertIndexes<AnalystPublication>(
+            "UX_AnalystPublications_Provider_Identity_Version",
+            "IX_AnalystPublications_ContentHash",
+            "IX_AnalystPublications_Source_PublishedAtUtc");
+        AssertIndexes<EvidenceRecord>(
+            "UX_EvidenceRecords_IdentityHash",
+            "IX_EvidenceRecords_Source_ExternalId",
+            "IX_EvidenceRecords_ContentHash",
+            "IX_EvidenceRecords_Instrument_AvailableAtUtc",
+            "IX_EvidenceRecords_Type_AvailableAtUtc",
+            "IX_EvidenceRecords_SourceType_AvailableAtUtc",
+            "IX_EvidenceRecords_Timeframe_AvailableAtUtc");
+        var evidence = _dbContext.GetService<IDesignTimeModel>().Model.FindEntityType(typeof(EvidenceRecord));
+        Assert.Equal("decimal(28,10)", evidence?.FindProperty(nameof(EvidenceRecord.NumericValue))?.GetColumnType());
+        AssertIndexes<EvidenceCluster>(
+            "UX_EvidenceClusters_Type_Key",
+            "IX_EvidenceClusters_Type_EventTimeUtc");
+        AssertIndexes<AiAnalysis>(
+            "IX_AiAnalyses_Instrument_AnalysisTimeUtc",
+            "IX_AiAnalyses_Specialist_Type_Lifecycle_AnalysisTimeUtc",
+            "IX_AiAnalyses_CacheKey_Status_Lifecycle",
+            "IX_AiAnalyses_Model_PromptVersion",
+            "IX_AiAnalyses_Status_CreatedAtUtc");
+        var interpretation = _dbContext.GetService<IDesignTimeModel>().Model.FindEntityType(typeof(AiAnalysis));
+        Assert.Equal("decimal(9,6)", interpretation?.FindProperty(nameof(AiAnalysis.Confidence))?.GetColumnType());
+        Assert.Equal("nvarchar(max)", interpretation?.FindProperty(nameof(AiAnalysis.Output))?.GetColumnType());
+        var cacheIndex = interpretation?.GetIndexes().Single(index =>
+            index.GetDatabaseName() == "IX_AiAnalyses_CacheKey_Status_Lifecycle");
+        Assert.True(cacheIndex?.IsUnique);
+        Assert.Equal(
+            "[Status] = 'Completed' AND [LifecycleStatus] = 'Current'",
+            cacheIndex?.GetFilter());
     }
 
     private void AssertIndexes<TEntity>(params string[] expectedNames)

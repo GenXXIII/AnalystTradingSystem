@@ -3,9 +3,11 @@
 ## Scope
 
 Phase 3 established the SQL Server and Entity Framework Core persistence model.
-Phase 5 maintains normalized MT5 candle evidence, Phase 7 persists relevant
+Phase 5 maintains normalized provider candle evidence, Phase 7 persists relevant
 news, and Phase 8 adds normalized macroeconomic series with audit-preserving
-revisions. The persistence layer still does not call AI models, evaluate
+revisions. Phase 9 adds immutable analyst claims, and Phase 10 enriches the
+shared evidence identity with normalization, relations, clusters, quarantine,
+and availability-time history. The persistence layer still does not call AI models, evaluate
 strategies, generate signals, or run backtests.
 
 SQL Server is the authoritative persistent store. Redis remains optional cache
@@ -13,18 +15,19 @@ infrastructure and must not become the source of record.
 
 ## Model overview
 
-The initial migration creates 22 application tables. Phases 5, 7, and 8 add
-operational collection tables, for a current total of 31:
+The initial migration creates 22 application tables. Later source pipelines and
+Phase 10 bring the current EF model to 38 mapped application tables:
 
 | Area | Tables | Purpose |
 | --- | --- | --- |
 | Reference | `DataProviders`, `Instruments`, `Timeframes` | Normalized source, symbol, and timeframe identities |
-| Evidence | `EvidenceRecords` | Stable identity shared by raw and derived evidence |
+| Evidence | `EvidenceRecords`, `EvidenceRelations`, `EvidenceClusters`, `EvidenceClusterMembers`, `EvidenceQuarantineRecords` | Normalized attributed evidence, deterministic relationships/grouping, and invalid-record traceability |
 | Market | `MarketCandles`, `TechnicalObservations` | Fixed-point OHLCV data and extensible derived measurements |
 | News | `NewsArticles`, `NewsArticleContents` | Article metadata separated from content whose storage is permitted |
+| News pipeline | `NewsCollectionStates`, `NewsCollectionRuns` | Durable cursor/state and collection metrics |
 | Macro | `EconomicEvents` | Scheduled events with nullable forecast, previous, and actual values |
 | Economic pipeline | `EconomicSeries`, `EconomicObservations`, `EconomicObservationRevisions`, `EconomicSyncStates`, `EconomicSyncRuns` | Provider series, current values, revision audit, and durable synchronization |
-| Analysts | `AnalystStatements` | Original source claims, separate from later interpretation |
+| Analysts | `AnalystSources`, `Analysts`, `AnalystPublications`, `AnalystStatements`, `AnalystSyncStates`, `AnalystSyncRuns` | Attributed immutable claims, publication versions/replicas, and collection state; separate from facts and later interpretation |
 | AI | `AiAnalyses`, `AiAnalysisEvidence` | Append-only model/prompt/version outputs and their evidence |
 | Strategy | `Strategies`, `StrategyVersions`, `StrategyEvaluations`, `StrategyEvaluationEvidence` | Stable strategy identities, immutable versions, and evidence-backed evaluations |
 | Signals | `TradingSignals`, `TradingSignalEvidence`, `SignalOutcomes` | Original signals, explanation links, and independently measured outcomes |
@@ -37,6 +40,14 @@ events, and analyst statements a common referentially constrained identity.
 AI analyses, strategy evaluations, and signals link to those records through
 explicit join tables. This avoids polymorphic IDs without foreign keys and lets
 later phases explain exactly which evidence supported a result.
+
+Phase 10 adds controlled evidence/source/direction/importance/category/unit and
+quality fields, canonical plus original source values, identity/content hashes,
+and separate observed, available, published, collected, and validity timestamps.
+Every historical evidence read filters by `AvailableAtUtc` and the validity
+interval. Relations preserve republications, contradictions, updates, and other
+explicit links; clusters preserve event membership without merging the source
+records. Invalid external records can be quarantined rather than discarded.
 
 Economic observations also use `EvidenceRecords`. Their observation period is
 stored separately as SQL `date`; evidence/system timestamps are UTC. Current
@@ -87,6 +98,7 @@ twice. A provider-first companion index supports synchronization queries.
 
 Other duplicate protection includes:
 
+- unique normalized evidence identity hash, plus source/external ID and content-hash lookup indexes;
 - provider plus external ID for news, economic events, and analyst statements;
 - provider plus external series ID for economic series;
 - economic series plus observation date for current economic observations;
@@ -97,7 +109,8 @@ Other duplicate protection includes:
 - one outcome per signal;
 - technical observation identity including calculation version and parameter hash.
 
-Phase 4 seeds `mt5` as a market `DataProvider`. Phase 5 incremental synchronization
+The original Phase 4 migration seeded a legacy provider row; it is retained as
+inactive migration history. Phase 5 incremental synchronization
 looks up the internal instrument, timeframe, and provider identities, inserts
 new candles in one batch, skips already-complete rows, and updates an existing
 incomplete candle when the provider returns newer values. The database unique
@@ -112,6 +125,8 @@ cascade-deleted.
 
 Indexes target known access paths rather than every column:
 
+- evidence by identity, source/external ID, content hash, instrument/time,
+  evidence type/time, source type/time, and timeframe/time;
 - candles by instrument, timeframe, provider, and UTC range;
 - news by publication time, instrument, external ID, and hashes;
 - events by currency and scheduled time;

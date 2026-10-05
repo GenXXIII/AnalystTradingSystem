@@ -4,7 +4,6 @@ export type MarketProviderState =
   | "Connected"
   | "Disconnected"
   | "ConfigurationError"
-  | "TerminalNotFound"
   | "AuthenticationFailed"
   | "ConnectionFailed";
 
@@ -12,11 +11,9 @@ export interface MarketProviderStatus {
   provider: string;
   state: MarketProviderState;
   enabled: boolean;
-  terminalAvailable: boolean;
   connected: boolean;
   applicationSymbol: string;
   providerSymbol: string;
-  accountLogin: string | null;
   server: string | null;
   message: string;
   checkedAtUtc: string;

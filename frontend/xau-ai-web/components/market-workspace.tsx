@@ -64,15 +64,15 @@ export function MarketWorkspace() {
             </div>
             <div>
               <dt>Data provider</dt>
-              <dd>{provider?.provider ?? "MT5 adapter"}</dd>
+              <dd>{provider?.provider ?? "AllTick"}</dd>
             </div>
             <div>
               <dt>Provider mapping</dt>
               <dd>{provider?.providerSymbol ?? "—"}</dd>
             </div>
             <div>
-              <dt>Account</dt>
-              <dd>{provider?.accountLogin ?? "Not exposed"}</dd>
+              <dt>Provider host</dt>
+              <dd>{provider?.server ?? "Not available"}</dd>
             </div>
           </dl>
         </article>

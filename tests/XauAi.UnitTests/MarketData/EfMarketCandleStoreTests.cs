@@ -8,11 +8,17 @@ namespace XauAi.UnitTests.MarketData;
 
 public sealed class EfMarketCandleStoreTests
 {
+    private static readonly MarketDataPipelineSettings Settings = new()
+    {
+        Provider = "AllTick",
+        ProviderKey = "alltick"
+    };
+
     [Fact]
     public async Task Repeated_complete_candle_is_idempotent()
     {
         await using var context = await CreateContextAsync();
-        var store = new EfMarketCandleStore(context, NullLogger<EfMarketCandleStore>.Instance);
+        var store = new EfMarketCandleStore(context, Settings, NullLogger<EfMarketCandleStore>.Instance);
         var candle = CreateCandle(MarketTimeframe.H1, isComplete: true);
 
         var first = await store.SaveAsync([candle]);
@@ -27,7 +33,7 @@ public sealed class EfMarketCandleStoreTests
     public async Task Incomplete_candle_can_be_updated_once_it_changes()
     {
         await using var context = await CreateContextAsync();
-        var store = new EfMarketCandleStore(context, NullLogger<EfMarketCandleStore>.Instance);
+        var store = new EfMarketCandleStore(context, Settings, NullLogger<EfMarketCandleStore>.Instance);
         var incomplete = CreateCandle(MarketTimeframe.M5, isComplete: false);
         await store.SaveAsync([incomplete]);
         var completed = incomplete with { Close = 2346m, IsComplete = true };
@@ -44,7 +50,7 @@ public sealed class EfMarketCandleStoreTests
     public async Task Multiple_timeframes_are_stored_independently()
     {
         await using var context = await CreateContextAsync();
-        var store = new EfMarketCandleStore(context, NullLogger<EfMarketCandleStore>.Instance);
+        var store = new EfMarketCandleStore(context, Settings, NullLogger<EfMarketCandleStore>.Instance);
 
         await store.SaveAsync([CreateCandle(MarketTimeframe.M1, isComplete: true)]);
         await store.SaveAsync([CreateCandle(MarketTimeframe.H4, isComplete: true)]);
@@ -52,10 +58,34 @@ public sealed class EfMarketCandleStoreTests
         Assert.Equal(2, await context.MarketCandles.CountAsync());
     }
 
+    [Fact]
+    public async Task Same_candle_from_two_providers_is_stored_independently()
+    {
+        await using var context = await CreateContextAsync();
+        var store = new EfMarketCandleStore(context, Settings, NullLogger<EfMarketCandleStore>.Instance);
+        var primary = CreateCandle(MarketTimeframe.M1, isComplete: true) with
+        {
+            ProviderSymbol = "GOLD",
+            ProviderKey = "alltick"
+        };
+        var reference = primary with
+        {
+            ProviderSymbol = "XAU/USD",
+            ProviderKey = "twelvedata",
+            Close = primary.Close + 0.25m
+        };
+
+        await store.SaveAsync([primary]);
+        await store.SaveAsync([reference]);
+
+        Assert.Equal(2, await context.MarketCandles.CountAsync());
+        Assert.Equal(2, await context.MarketCandles.Select(candle => candle.DataProviderId).Distinct().CountAsync());
+    }
+
     private static async Task<XauAiDbContext> CreateContextAsync()
     {
         var options = new DbContextOptionsBuilder<XauAiDbContext>()
-            .UseInMemoryDatabase($"mt5-store-{Guid.NewGuid():N}")
+            .UseInMemoryDatabase($"alltick-store-{Guid.NewGuid():N}")
             .Options;
         var context = new XauAiDbContext(options);
         await context.Database.EnsureCreatedAsync();

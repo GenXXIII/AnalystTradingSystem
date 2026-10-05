@@ -38,7 +38,7 @@ public sealed class MarketDataPipelineSqlTests(ITestOutputHelper output)
         fixture.Provider.FailOnRequestNumber = 2;
         var failure = await Assert.ThrowsAsync<MarketDataException>(() =>
             fixture.SynchronizeAsync(MarketTimeframe.M15, StartUtc, StartUtc.AddHours(2)));
-        Assert.Equal(MarketDataErrorCodes.AuthenticationFailed, failure.Code);
+        Assert.Equal(MarketDataErrorCodes.ProviderAuthenticationFailed, failure.Code);
 
         await using (var failureScope = fixture.Services.CreateAsyncScope())
         {
@@ -287,7 +287,7 @@ public sealed class MarketDataPipelineSqlTests(ITestOutputHelper output)
             _requestsByTimeframe[timeframe] = requestNumber;
             if (FailTimeframe == timeframe && FailOnRequestNumber == requestNumber)
             {
-                throw new MarketDataException(MarketDataErrorCodes.AuthenticationFailed, "Provider authentication failed.");
+                throw new MarketDataException(MarketDataErrorCodes.ProviderAuthenticationFailed, "Provider authentication failed.");
             }
 
             var candles = new List<MarketCandleSnapshot>();

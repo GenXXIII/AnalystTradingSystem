@@ -33,16 +33,29 @@ public sealed class DatabaseFoundationTests
                 Assert.Contains(appliedMigrations, migration =>
                     migration.EndsWith("_SeedMt5DataProvider", StringComparison.Ordinal));
                 Assert.Contains(appliedMigrations, migration =>
+                    migration.EndsWith("_RetireMt5Provider", StringComparison.Ordinal));
+                Assert.Contains(appliedMigrations, migration =>
                     migration.EndsWith("_ImplementNewsCollection", StringComparison.Ordinal));
                 Assert.Contains(appliedMigrations, migration =>
                     migration.EndsWith("_ImplementEconomicDataPipeline", StringComparison.Ordinal));
+                Assert.Contains(appliedMigrations, migration =>
+                    migration.EndsWith("_ImplementAnalystDataPipeline", StringComparison.Ordinal));
+                Assert.Contains(appliedMigrations, migration =>
+                    migration.EndsWith("_ImplementEvidenceFoundation", StringComparison.Ordinal));
                 Assert.True(await migrationContext.DataProviders.AnyAsync(provider =>
                     provider.Key == "mt5"
-                    && provider.Name == "MetaTrader 5"
+                    && !provider.IsActive));
+                Assert.True(await migrationContext.DataProviders.AnyAsync(provider =>
+                    provider.Key == "alltick"
+                    && provider.ProviderType == "Market"
                     && provider.IsActive));
                 Assert.True(await migrationContext.DataProviders.AnyAsync(provider =>
                     provider.Key == "fred"
                     && provider.ProviderType == "Economic"
+                    && provider.IsActive));
+                Assert.True(await migrationContext.DataProviders.AnyAsync(provider =>
+                    provider.Key == "analyst-rss"
+                    && provider.ProviderType == "Analyst"
                     && provider.IsActive));
             }
 
@@ -74,12 +87,7 @@ public sealed class DatabaseFoundationTests
                 await insertContext.SaveChangesAsync();
                 providerId = provider.Id;
 
-                insertContext.EvidenceRecords.Add(new EvidenceRecord
-                {
-                    Id = candleId,
-                    Kind = "MarketCandle",
-                    ObservedAtUtc = sourceOpenTime
-                });
+                insertContext.EvidenceRecords.Add(CreateEvidence(candleId, sourceOpenTime));
                 insertContext.MarketCandles.Add(CreateCandle(
                     candleId,
                     instrumentId,
@@ -130,12 +138,7 @@ public sealed class DatabaseFoundationTests
     {
         await using var context = new XauAiDbContext(options);
         var duplicateId = Guid.NewGuid();
-        context.EvidenceRecords.Add(new EvidenceRecord
-        {
-            Id = duplicateId,
-            Kind = "MarketCandle",
-            ObservedAtUtc = sourceOpenTime
-        });
+        context.EvidenceRecords.Add(CreateEvidence(duplicateId, sourceOpenTime));
         context.MarketCandles.Add(CreateCandle(
             duplicateId,
             instrumentId,
@@ -154,12 +157,7 @@ public sealed class DatabaseFoundationTests
     {
         await using var context = new XauAiDbContext(options);
         var candleId = Guid.NewGuid();
-        context.EvidenceRecords.Add(new EvidenceRecord
-        {
-            Id = candleId,
-            Kind = "MarketCandle",
-            ObservedAtUtc = sourceOpenTime.AddMinutes(1)
-        });
+        context.EvidenceRecords.Add(CreateEvidence(candleId, sourceOpenTime.AddMinutes(1)));
         context.MarketCandles.Add(CreateCandle(
             candleId,
             instrumentId,
@@ -199,11 +197,51 @@ public sealed class DatabaseFoundationTests
                 'IX_NewsCollectionRuns_Provider_StartedAtUtc',
                 'UX_EconomicEvents_Provider_ExternalId',
                 'IX_EconomicEvents_ScheduledAtUtc',
-                'UX_AnalystStatements_Provider_ExternalId',
-                'IX_AnalystStatements_Instrument_PublishedAtUtc')
+                'UX_AnalystStatements_Publication_ExternalId',
+                'UX_AnalystStatements_Publication_ClaimHash',
+                'IX_AnalystStatements_Instrument_PublishedAtUtc',
+                'IX_AnalystStatements_Source_PublishedAtUtc',
+                'IX_AnalystStatements_Analyst_PublishedAtUtc',
+                'IX_AnalystStatements_Direction_PublishedAtUtc',
+                'UX_AnalystSources_Provider_IdentityHash',
+                'UX_Analysts_Source_IdentityHash',
+                'UX_AnalystPublications_Provider_Identity_Version',
+                'UX_EvidenceRecords_IdentityHash',
+                'IX_EvidenceRecords_Source_ExternalId',
+                'IX_EvidenceRecords_ContentHash',
+                'IX_EvidenceRecords_Instrument_AvailableAtUtc',
+                'IX_EvidenceRecords_Type_AvailableAtUtc',
+                'IX_EvidenceRecords_SourceType_AvailableAtUtc',
+                'IX_EvidenceRecords_Timeframe_AvailableAtUtc')
             """;
-        Assert.Equal(17, Convert.ToInt32(await indexCommand.ExecuteScalarAsync()));
+        Assert.Equal(31, Convert.ToInt32(await indexCommand.ExecuteScalarAsync()));
     }
+
+    private static EvidenceRecord CreateEvidence(Guid id, DateTimeOffset observedAt) => new()
+    {
+        Id = id,
+        Kind = "MarketCandle",
+        EvidenceType = "Market",
+        SourceType = "Manual",
+        SourceKey = "integration-test-market",
+        IdentityHash = id.ToString("N").PadRight(64, '0'),
+        CanonicalSymbol = "XAUUSD",
+        OriginalSymbol = "XAUUSD.test",
+        TimeframeCode = "M1",
+        ObservedAtUtc = observedAt,
+        AvailableAtUtc = observedAt.AddMinutes(1),
+        ValidFromUtc = observedAt.AddMinutes(1),
+        Direction = "Unknown",
+        Importance = "Unknown",
+        Category = "Commodity",
+        Quality = "High",
+        Completeness = "Complete",
+        TimestampQuality = "Exact",
+        SourceReliability = "Known",
+        IsRelevant = true,
+        CreatedAtUtc = observedAt,
+        UpdatedAtUtc = observedAt
+    };
 
     private static MarketCandle CreateCandle(
         Guid id,

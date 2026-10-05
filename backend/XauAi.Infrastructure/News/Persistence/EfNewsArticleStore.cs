@@ -4,6 +4,7 @@ using XauAi.Application.News;
 using XauAi.Domain.Evidence;
 using XauAi.Domain.News;
 using XauAi.Infrastructure.Persistence;
+using XauAi.Infrastructure.Evidence.Persistence;
 
 namespace XauAi.Infrastructure.News.Persistence;
 
@@ -56,13 +57,11 @@ internal sealed class EfNewsArticleStore(
 
         foreach (var article in insertable)
         {
-            context.EvidenceRecords.Add(new EvidenceRecord
-            {
-                Id = article.Id,
-                Kind = "NewsArticle",
-                ObservedAtUtc = article.PublishedAtUtc,
-                CreatedAtUtc = article.CollectedAtUtc
-            });
+            context.EvidenceRecords.Add(EvidenceRecordFactory.NewsArticle(
+                article,
+                providerId,
+                instrumentId,
+                settings.ProviderKey));
             context.NewsArticles.Add(new NewsArticle
             {
                 Id = article.Id,

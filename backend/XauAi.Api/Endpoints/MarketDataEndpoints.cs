@@ -125,6 +125,29 @@ public static class MarketDataEndpoints
             .Produces<ApiSuccessResponse<IReadOnlyList<MarketDataGap>>>(StatusCodes.Status200OK)
             .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest);
 
+        group.MapGet("/source-comparison", async (
+                string symbol,
+                string? timeframe,
+                int? limit,
+                IMarketDataQualityService qualityService,
+                HttpContext context,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await qualityService.CompareAsync(
+                    symbol,
+                    ParseTimeframe(timeframe),
+                    limit ?? 100,
+                    cancellationToken);
+                return Results.Ok(ApiSuccessResponse<MarketDataSourceComparison>.Create(
+                    result,
+                    context.TraceIdentifier));
+            })
+            .WithName("CompareMarketDataSources")
+            .WithSummary("Compares completed primary and reference candles without blending provider data.")
+            .Produces<ApiSuccessResponse<MarketDataSourceComparison>>(StatusCodes.Status200OK)
+            .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest)
+            .Produces<ApiErrorResponse>(StatusCodes.Status503ServiceUnavailable);
+
         group.MapPost("/sync", async (
                 string symbol,
                 MarketDataSyncApiRequest request,

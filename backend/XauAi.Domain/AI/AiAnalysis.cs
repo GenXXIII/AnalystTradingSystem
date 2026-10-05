@@ -8,6 +8,10 @@ public sealed class AiAnalysis
 
     public string AnalysisType { get; set; } = string.Empty;
 
+    public string Specialist { get; set; } = string.Empty;
+
+    public string? Timeframe { get; set; }
+
     public string Provider { get; set; } = string.Empty;
 
     public string Model { get; set; } = string.Empty;
@@ -24,9 +28,41 @@ public sealed class AiAnalysis
 
     public string? InputDigest { get; set; }
 
+    public string CacheKey { get; set; } = string.Empty;
+
+    public string EvidenceVersion { get; set; } = string.Empty;
+
+    public DateTimeOffset AnalysisTimeUtc { get; set; }
+
+    public DateTimeOffset EvidenceUpdatedAtUtc { get; set; }
+
+    public string Direction { get; set; } = string.Empty;
+
+    public string Impact { get; set; } = string.Empty;
+
+    public string AffectedAssetsJson { get; set; } = "[]";
+
+    public string Mechanism { get; set; } = string.Empty;
+
+    public string ExpectedEffect { get; set; } = string.Empty;
+
+    public string ObservedReaction { get; set; } = string.Empty;
+
+    public string ReactionAlignment { get; set; } = string.Empty;
+
+    public string CurrentRelevance { get; set; } = string.Empty;
+
+    public decimal? Confidence { get; set; }
+
+    public string Uncertainty { get; set; } = string.Empty;
+
+    public string Summary { get; set; } = string.Empty;
+
     public string? Output { get; set; }
 
     public string Status { get; set; } = string.Empty;
+
+    public string LifecycleStatus { get; set; } = string.Empty;
 
     public int? InputTokens { get; set; }
 

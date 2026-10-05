@@ -4,22 +4,22 @@ using XauAi.Application.MarketData;
 using XauAi.Domain.Evidence;
 using XauAi.Domain.Market;
 using XauAi.Infrastructure.Persistence;
+using XauAi.Infrastructure.Evidence.Persistence;
 
 namespace XauAi.Infrastructure.MarketData.Persistence;
 
 internal sealed class EfMarketCandleStore(
     XauAiDbContext dbContext,
+    MarketDataPipelineSettings settings,
     ILogger<EfMarketCandleStore> logger) : IMarketCandleStore
 {
-    private const string Mt5ProviderKey = "mt5";
-
     public async Task<StoredCandleCursor?> GetLatestAsync(
         string symbol,
         MarketTimeframe timeframe,
         DateTimeOffset notAfterUtc,
         CancellationToken cancellationToken = default)
     {
-        var references = await FindReferencesAsync(symbol, timeframe, cancellationToken);
+        var references = await FindReferencesAsync(symbol, timeframe, settings.ProviderKey, cancellationToken);
         if (references is not { } foundReferences)
         {
             return null;
@@ -49,14 +49,22 @@ internal sealed class EfMarketCandleStore(
         var first = candles.First();
         if (candles.Any(candle =>
                 !string.Equals(candle.Symbol, first.Symbol, StringComparison.OrdinalIgnoreCase)
-                || candle.Timeframe != first.Timeframe))
+                || candle.Timeframe != first.Timeframe
+                || !string.Equals(candle.ProviderKey, first.ProviderKey, StringComparison.OrdinalIgnoreCase)))
         {
             throw new MarketDataException(
                 MarketDataErrorCodes.InvalidRequest,
                 "A persistence batch must contain one symbol and timeframe.");
         }
 
-        var (InstrumentId, TimeframeId, ProviderId) = await FindReferencesAsync(first.Symbol, first.Timeframe, cancellationToken)
+        var providerKey = string.IsNullOrWhiteSpace(first.ProviderKey)
+            ? settings.ProviderKey
+            : first.ProviderKey;
+        var (InstrumentId, TimeframeId, ProviderId) = await FindReferencesAsync(
+            first.Symbol,
+            first.Timeframe,
+            providerKey,
+            cancellationToken)
             ?? throw new MarketDataException(
                 MarketDataErrorCodes.DatabaseDisabled,
                 "Required market reference data is unavailable.");
@@ -90,18 +98,31 @@ internal sealed class EfMarketCandleStore(
                 }
 
                 ApplySnapshot(stored, snapshot);
+                var storedEvidence = await dbContext.EvidenceRecords.FindAsync([stored.Id], cancellationToken);
+                if (storedEvidence is not null)
+                {
+                    EvidenceRecordFactory.Apply(
+                        storedEvidence,
+                        EvidenceRecordFactory.MarketCandle(
+                            stored.Id,
+                            ProviderId,
+                            InstrumentId,
+                            TimeframeId,
+                            providerKey,
+                            snapshot));
+                }
                 updated++;
                 continue;
             }
 
             var candleId = Guid.NewGuid();
-            dbContext.EvidenceRecords.Add(new EvidenceRecord
-            {
-                Id = candleId,
-                Kind = "MarketCandle",
-                ObservedAtUtc = snapshot.OpenTimeUtc,
-                CreatedAtUtc = snapshot.FetchedAtUtc
-            });
+            dbContext.EvidenceRecords.Add(EvidenceRecordFactory.MarketCandle(
+                candleId,
+                ProviderId,
+                InstrumentId,
+                TimeframeId,
+                providerKey,
+                snapshot));
             var candle = new MarketCandle
             {
                 Id = candleId,
@@ -120,7 +141,8 @@ internal sealed class EfMarketCandleStore(
         }
 
         logger.LogInformation(
-            "Persisted MT5 candle batch for {Symbol} {Timeframe}: {Inserted} inserted, {Updated} updated, {Skipped} skipped",
+            "Persisted {ProviderKey} candle batch for {Symbol} {Timeframe}: {Inserted} inserted, {Updated} updated, {Skipped} skipped",
+            providerKey,
             first.Symbol,
             first.Timeframe.Code(),
             inserted,
@@ -132,6 +154,7 @@ internal sealed class EfMarketCandleStore(
     private async Task<(Guid InstrumentId, Guid TimeframeId, Guid ProviderId)?> FindReferencesAsync(
         string symbol,
         MarketTimeframe timeframe,
+        string providerKey,
         CancellationToken cancellationToken)
     {
         var instrumentId = await dbContext.Instruments
@@ -144,7 +167,7 @@ internal sealed class EfMarketCandleStore(
             .Select(value => (Guid?)value.Id)
             .SingleOrDefaultAsync(cancellationToken);
         var providerId = await dbContext.DataProviders
-            .Where(provider => provider.Key == Mt5ProviderKey && provider.IsActive)
+            .Where(provider => provider.Key == providerKey && provider.IsActive)
             .Select(provider => (Guid?)provider.Id)
             .SingleOrDefaultAsync(cancellationToken);
 

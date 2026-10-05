@@ -7,7 +7,8 @@ namespace XauAi.Infrastructure.MarketData.Persistence;
 
 internal sealed class EfMarketDataQueryStore(
     XauAiDbContext dbContext,
-    MarketDataReferenceResolver referenceResolver) : IMarketDataQueryStore
+    MarketDataReferenceResolver referenceResolver,
+    MarketDataPipelineSettings settings) : IMarketDataQueryStore
 {
     public async Task<IReadOnlyList<StoredMarketCandle>> GetRangeAsync(
         MarketDataQuery query,
@@ -115,7 +116,7 @@ internal sealed class EfMarketDataQueryStore(
                 && candle.TimeframeId == references.TimeframeId
                 && candle.DataProviderId == references.ProviderId);
 
-    private static StoredMarketCandle ToStored(
+    private StoredMarketCandle ToStored(
         string symbol,
         MarketTimeframe timeframe,
         MarketCandle candle) =>
@@ -133,5 +134,6 @@ internal sealed class EfMarketDataQueryStore(
             candle.RealVolume,
             candle.Spread,
             candle.IsComplete,
-            candle.FetchedAtUtc);
+            candle.FetchedAtUtc,
+            settings.ProviderKey);
 }

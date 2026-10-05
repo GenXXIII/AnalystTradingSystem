@@ -132,6 +132,11 @@ html::-webkit-scrollbar, body::-webkit-scrollbar, .terminal-table-scroll::-webki
 .chart-ohlc { position: absolute; z-index: 3; top: 9px; left: 12px; display: flex; flex-wrap: wrap; gap: 9px; max-width: calc(100% - 24px); color: var(--muted); font-size: 9px; font-variant-numeric: tabular-nums; pointer-events: none; }
 .chart-ohlc time { color: #8ea0a8; }
 .chart-ohlc b { color: var(--text); }
+.chart-overlay-legend { position: absolute; z-index: 3; top: 29px; left: 12px; display: flex; gap: 12px; color: #84949b; font-size: 8px; font-weight: 800; letter-spacing: .04em; pointer-events: none; text-transform: uppercase; }
+.chart-overlay-legend span::before { display: inline-block; width: 12px; height: 2px; margin: 0 5px 2px 0; background: currentColor; content: ""; vertical-align: middle; }
+.chart-overlay-legend span[data-overlay="ema"] { color: #d7b52a; }
+.chart-overlay-legend span[data-overlay="floor"] { color: #00a875; }
+.chart-overlay-legend span[data-overlay="closed"] { color: #52776f; }
 .market-session { position: absolute; z-index: 4; top: 11px; left: 50%; display: flex; max-width: calc(100% - 28px); min-height: 36px; align-items: center; gap: 8px; padding: 0 14px; border: 1px solid rgba(255, 70, 93, .5); border-radius: 18px; background: rgba(21, 12, 15, .95); box-shadow: 0 6px 22px rgba(0, 0, 0, .34); color: #b9aaae; font-size: 11px; pointer-events: none; transform: translateX(-50%); backdrop-filter: blur(8px); }
 .market-session i { width: 9px; height: 9px; flex: 0 0 auto; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 4px rgba(255, 70, 93, .12); }
 .market-session strong { color: #ff7080; font-size: 11px; white-space: nowrap; }

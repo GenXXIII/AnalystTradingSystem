@@ -6,10 +6,13 @@ import {
   ColorType,
   CrosshairMode,
   createChart,
-  type AutoscaleInfo,
   type CandlestickData,
   type IChartApi,
   type ISeriesApi,
+  type LineData,
+  LineSeries,
+  LineStyle,
+  LineType,
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
@@ -31,10 +34,26 @@ const utcTime = new Intl.DateTimeFormat("en-GB", {
 const MILLISECONDS_PER_DAY = 86_400_000;
 const WEEK_WINDOW_DAYS = 7;
 const RIGHT_PADDING_BARS = 6;
-const PRICE_RANGE_PADDING = 20;
+const EMA_PERIOD = 20;
+const PRICE_FLOOR_PERIOD = 12;
 const DEFAULT_PRICE_MARGIN = 0.16;
 const MIN_PRICE_MARGIN = 0.05;
 const MAX_PRICE_MARGIN = 0.25;
+const CLOSED_SESSION_GAP_SECONDS = 6 * 60 * 60;
+const MAX_CLOSED_SESSION_DISPLAY_BARS = 5_000;
+const CLOSED_SESSION_UP_COLOR = "#00d897";
+const CLOSED_SESSION_DOWN_COLOR = "#ff465d";
+const INTRADAY_WINDOW_HOURS = 60;
+const DAILY_WINDOW_HOURS = 7 * 24;
+const TIMEFRAME_SECONDS: Record<string, number> = {
+  M1: 60,
+  M5: 5 * 60,
+  M15: 15 * 60,
+  M30: 30 * 60,
+  H1: 60 * 60,
+  H4: 4 * 60 * 60,
+  D1: 24 * 60 * 60,
+};
 
 type ChartReadout = {
   open: number;
@@ -42,6 +61,7 @@ type ChartReadout = {
   low: number;
   close: number;
   time: Time;
+  closedSession?: boolean;
 };
 
 type TradingChartProps = Readonly<{
@@ -58,7 +78,10 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const emaSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const priceFloorSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const activeTimeframeRef = useRef<string | null>(null);
+  const fittedPointCountRef = useRef(0);
   const priceMarginRef = useRef(DEFAULT_PRICE_MARGIN);
   const priceScaleDragRef = useRef<{ startY: number; startMargin: number } | null>(null);
   const pointerInspectingRef = useRef(false);
@@ -69,6 +92,11 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
     () => normalizeCandles(candles.filter((candle) => candle.timeframe === timeframe)),
     [candles, timeframe],
   );
+  const displayPoints = useMemo(
+    () => addClosedSessionDisplayBars(points, timeframe),
+    [points, timeframe],
+  );
+  const hasClosedSessionBars = displayPoints.length > points.length;
   const latest = points.at(-1) ?? null;
   const utcDayStartMilliseconds = nowUtcMilliseconds === null
     ? null
@@ -115,7 +143,8 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
         secondsVisible: false,
         rightOffset: RIGHT_PADDING_BARS,
         barSpacing: 8,
-        minBarSpacing: 2,
+        minBarSpacing: 0.1,
+        enableConflation: true,
         fixLeftEdge: true,
         fixRightEdge: false,
       },
@@ -137,6 +166,24 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
         pinch: true,
       },
     });
+    const emaSeries = chart.addSeries(LineSeries, {
+      color: "#d7b52a",
+      lineWidth: 2,
+      lineStyle: LineStyle.Solid,
+      lineType: LineType.Simple,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
+    const priceFloorSeries = chart.addSeries(LineSeries, {
+      color: "#008f63",
+      lineWidth: 1,
+      lineStyle: LineStyle.Solid,
+      lineType: LineType.WithSteps,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
     const series = chart.addSeries(CandlestickSeries, {
       upColor: "#00d897",
       downColor: "#ff465d",
@@ -149,17 +196,6 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
       priceLineWidth: 1,
       priceLineVisible: true,
       lastValueVisible: true,
-      autoscaleInfoProvider: (baseImplementation: () => AutoscaleInfo | null) => {
-        const autoscaleInfo = baseImplementation();
-        if (!autoscaleInfo?.priceRange) return autoscaleInfo;
-        return {
-          ...autoscaleInfo,
-          priceRange: {
-            minValue: autoscaleInfo.priceRange.minValue - PRICE_RANGE_PADDING,
-            maxValue: autoscaleInfo.priceRange.maxValue + PRICE_RANGE_PADDING,
-          },
-        };
-      },
     });
 
     const handleCrosshair = (parameter: { time?: Time; seriesData: Map<unknown, unknown> }) => {
@@ -169,7 +205,14 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
         return;
       }
       pointerInspectingRef.current = true;
-      setReadout({ open: data.open, high: data.high, low: data.low, close: data.close, time: data.time });
+      setReadout({
+        open: data.open,
+        high: data.high,
+        low: data.low,
+        close: data.close,
+        time: data.time,
+        closedSession: data.customValues?.closedSession === true,
+      });
     };
     chart.subscribeCrosshairMove(handleCrosshair);
 
@@ -181,12 +224,16 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
 
     chartRef.current = chart;
     seriesRef.current = series;
+    emaSeriesRef.current = emaSeries;
+    priceFloorSeriesRef.current = priceFloorSeries;
     return () => {
       resize.disconnect();
       chart.unsubscribeCrosshairMove(handleCrosshair);
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      emaSeriesRef.current = null;
+      priceFloorSeriesRef.current = null;
     };
   }, []);
 
@@ -195,16 +242,22 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
     const chart = chartRef.current;
     if (!series || !chart) return;
 
-    series.setData(points);
+    series.setData(displayPoints);
+    emaSeriesRef.current?.setData(calculateEma(points, EMA_PERIOD));
+    priceFloorSeriesRef.current?.setData(calculateRollingLow(points, PRICE_FLOOR_PERIOD));
     if (!pointerInspectingRef.current) setReadout(latest);
     const weeklyWindowKey = utcDayStartMilliseconds === null ? null : `${timeframe}:${utcDayStartMilliseconds}`;
-    if (points.length > 0 && weeklyWindowKey !== null && activeTimeframeRef.current !== weeklyWindowKey) {
+    const historyExpanded = points.length - fittedPointCountRef.current > 1;
+    if (points.length > 0
+        && weeklyWindowKey !== null
+        && (activeTimeframeRef.current !== weeklyWindowKey || historyExpanded)) {
       activeTimeframeRef.current = weeklyWindowKey;
       priceMarginRef.current = DEFAULT_PRICE_MARGIN;
       applyPriceScaleMargin(chart, DEFAULT_PRICE_MARGIN);
-      fitWeeklyCandles(chart, points, utcDayStartMilliseconds);
+      fitRecentCandles(chart, points, timeframe);
     }
-  }, [latest, points, timeframe, utcDayStartMilliseconds]);
+    fittedPointCountRef.current = points.length;
+  }, [displayPoints, latest, points, timeframe, utcDayStartMilliseconds]);
 
   useEffect(() => {
     seriesRef.current?.applyOptions({
@@ -240,35 +293,51 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
     applyPriceScaleMargin(chartRef.current, DEFAULT_PRICE_MARGIN);
   };
 
-  const displayed = readout ?? latest;
+  const displayed: ChartReadout | null = readout ?? (latest
+    ? { ...latest, closedSession: false }
+    : null);
   return (
     <div className="chart-wrap" data-market-state={marketSession?.isOpen === false ? "closed" : "open"} ref={shellRef}>
       <div className="chart-canvas" ref={canvasRef} aria-label={`${points.length} ${timeframe} XAUUSD candles`} />
       {points.length === 0 ? (
         <div className="chart-empty" role="status">
           <strong>No chart evidence yet</strong>
-          <span>Waiting for MT5 and stored market candles.</span>
+          <span>Waiting for AllTick and stored market candles.</span>
         </div>
       ) : null}
       <div className="chart-watermark" aria-hidden="true">XAUUSD <span>{timeframe}</span></div>
       {displayed ? (
         <div className="chart-ohlc" aria-live="polite">
           <time>{formatChartTime(displayed.time)} UTC</time>
-          <span>O <b>{price.format(displayed.open)}</b></span>
-          <span>H <b>{price.format(displayed.high)}</b></span>
-          <span>L <b>{price.format(displayed.low)}</b></span>
-          <span>C <b className={displayed.close >= displayed.open ? "positive-text" : "negative-text"}>{price.format(displayed.close)}</b></span>
+          {displayed.closedSession ? (
+            <span>Market closed · display carry only</span>
+          ) : (
+            <>
+              <span>O <b>{price.format(displayed.open)}</b></span>
+              <span>H <b>{price.format(displayed.high)}</b></span>
+              <span>L <b>{price.format(displayed.low)}</b></span>
+              <span>C <b className={displayed.close >= displayed.open ? "positive-text" : "negative-text"}>{price.format(displayed.close)}</b></span>
+            </>
+          )}
+        </div>
+      ) : null}
+      {points.length > 0 ? (
+        <div className="chart-overlay-legend" aria-label="Chart overlays">
+          <span data-overlay="ema">EMA {EMA_PERIOD}</span>
+          <span data-overlay="floor">{PRICE_FLOOR_PERIOD}-bar floor</span>
+          {hasClosedSessionBars ? <span data-overlay="closed">Closed-session carry</span> : null}
         </div>
       ) : null}
       <div className={`market-session ${isLive ? "live" : "paused"}`}>
         <i aria-hidden="true" />
-        <strong>{isLive ? "XAUUSD live market" : marketSession?.isOpen === false ? "XAUUSD market closed" : providerConnected ? "XAUUSD market open · awaiting tick" : "MT5 provider offline"}</strong>
+        <strong>{isLive ? "XAUUSD live market" : marketSession?.isOpen === false ? "XAUUSD market closed" : providerConnected ? "XAUUSD market open · awaiting tick" : "AllTick waiting for data"}</strong>
         {marketSession?.isOpen === false && latest ? <span>Last close {price.format(latest.close)} · {formatChartTime(latest.time)} UTC</span> : null}
         {marketSession && currentTime ? <span>{marketSession.nextTransitionLabel} / {marketSession.nextTransitionLocalLabel} · {formatSessionCountdown(currentTime, marketSession.nextTransitionAtUtc)}</span> : quote ? <span>Last tick {utcTime.format(new Date(quote.timestampUtc))} UTC</span> : null}
       </div>
       <div className="chart-controls" aria-label="Chart controls">
         <button type="button" onClick={() => zoomChart(chartRef.current, 0.78, points.length)} aria-label="Zoom in">+</button>
         <button type="button" onClick={() => zoomChart(chartRef.current, 1.28, points.length)} aria-label="Zoom out">−</button>
+        <button type="button" onClick={() => fitRecentCandles(chartRef.current, points, timeframe)}>Recent</button>
         <button type="button" onClick={() => fitWeeklyCandles(chartRef.current, points, utcDayStartMilliseconds)}>Fit 7D</button>
         <button type="button" onClick={() => chartRef.current?.timeScale().scrollToRealTime()} aria-label={marketSession?.isOpen === false ? "Jump to last closed candle" : "Jump to live candle"}>{marketSession?.isOpen === false ? "Last" : "Live"}</button>
         <button type="button" onClick={() => void toggleFullscreen(shellRef.current)} aria-label={isFullscreen ? "Exit fullscreen" : "Open fullscreen"}>{isFullscreen ? "Exit" : "⛶"}</button>
@@ -304,6 +373,46 @@ function normalizeCandles(candles: StoredMarketCandle[]): CandlestickData<UTCTim
   return [...byTime.values()].sort((left, right) => Number(left.time) - Number(right.time));
 }
 
+function addClosedSessionDisplayBars(
+  points: CandlestickData<UTCTimestamp>[],
+  timeframe: string,
+): CandlestickData<UTCTimestamp>[] {
+  const intervalSeconds = TIMEFRAME_SECONDS[timeframe];
+  if (!intervalSeconds || timeframe === "D1" || points.length < 2) return points;
+
+  const displayPoints: CandlestickData<UTCTimestamp>[] = [];
+  let displayBarCount = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index];
+    displayPoints.push(point);
+    const next = points[index + 1];
+    if (!next
+        || Number(next.time) - Number(point.time) < CLOSED_SESSION_GAP_SECONDS
+        || displayBarCount >= MAX_CLOSED_SESSION_DISPLAY_BARS) continue;
+
+    for (let timestamp = Number(point.time) + intervalSeconds;
+         timestamp < Number(next.time) && displayBarCount < MAX_CLOSED_SESSION_DISPLAY_BARS;
+         timestamp += intervalSeconds) {
+      const displayColor = displayBarCount % 2 === 0
+        ? CLOSED_SESSION_UP_COLOR
+        : CLOSED_SESSION_DOWN_COLOR;
+      displayPoints.push({
+        time: timestamp as UTCTimestamp,
+        open: point.close,
+        high: point.close,
+        low: point.close,
+        close: point.close,
+        color: displayColor,
+        borderColor: displayColor,
+        wickColor: displayColor,
+        customValues: { closedSession: true },
+      });
+      displayBarCount += 1;
+    }
+  }
+  return displayPoints;
+}
+
 function zoomChart(chart: IChartApi | null, factor: number, pointCount: number) {
   if (!chart || pointCount === 0) return;
   const range = chart.timeScale().getVisibleLogicalRange();
@@ -311,6 +420,40 @@ function zoomChart(chart: IChartApi | null, factor: number, pointCount: number) 
   const from = Math.max(0, range.from);
   const span = Math.max(4, (range.to - range.from) * factor);
   chart.timeScale().setVisibleLogicalRange({ from, to: from + span });
+}
+
+function fitRecentCandles(
+  chart: IChartApi | null,
+  points: CandlestickData<UTCTimestamp>[],
+  timeframe: string,
+) {
+  if (!chart || points.length === 0) return;
+  const lastIndex = points.length - 1;
+  const intervalSeconds = TIMEFRAME_SECONDS[timeframe] ?? TIMEFRAME_SECONDS.M15;
+  const windowHours = timeframe === "D1" ? DAILY_WINDOW_HOURS : INTRADAY_WINDOW_HOURS;
+  const rawWindowStart = timeframe === "D1"
+    ? Number(points[lastIndex].time) - (windowHours * 60 * 60)
+    : getIntradayWindowStart(Number(points[lastIndex].time));
+  const alignedWindowStart = Math.floor(rawWindowStart / intervalSeconds) * intervalSeconds;
+  chart.timeScale().setVisibleRange({
+    from: alignedWindowStart as UTCTimestamp,
+    to: points[lastIndex].time,
+  });
+  chart.timeScale().applyOptions({ rightOffset: RIGHT_PADDING_BARS });
+}
+
+function getIntradayWindowStart(latestTimestamp: number) {
+  const latest = new Date(latestTimestamp * 1_000);
+  const day = latest.getUTCDay();
+  if (day === 0 || day === 1) {
+    const daysSinceSaturday = day === 0 ? 1 : 2;
+    return Date.UTC(
+      latest.getUTCFullYear(),
+      latest.getUTCMonth(),
+      latest.getUTCDate() - daysSinceSaturday,
+    ) / 1_000;
+  }
+  return latestTimestamp - (INTRADAY_WINDOW_HOURS * 60 * 60);
 }
 
 function fitWeeklyCandles(
@@ -321,16 +464,48 @@ function fitWeeklyCandles(
   if (!chart || points.length === 0 || utcDayStartMilliseconds === null) return;
   const windowStartSeconds = (utcDayStartMilliseconds - ((WEEK_WINDOW_DAYS - 1) * MILLISECONDS_PER_DAY)) / 1_000;
   const firstWeeklyIndex = points.findIndex((point) => Number(point.time) >= windowStartSeconds);
-  const firstIndex = firstWeeklyIndex < 0 ? Math.max(0, points.length - 1) : firstWeeklyIndex;
-  const lastIndex = points.length - 1;
-  chart.timeScale().setVisibleLogicalRange({
-    from: firstIndex,
-    to: lastIndex + RIGHT_PADDING_BARS,
+  const firstIndex = firstWeeklyIndex < 0 ? points.length - 1 : firstWeeklyIndex;
+  chart.timeScale().setVisibleRange({
+    from: points[firstIndex].time,
+    to: points[points.length - 1].time,
   });
+  chart.timeScale().applyOptions({ rightOffset: RIGHT_PADDING_BARS });
 }
 
 function clampPriceMargin(value: number) {
   return Math.min(MAX_PRICE_MARGIN, Math.max(MIN_PRICE_MARGIN, value));
+}
+
+function calculateEma(
+  points: CandlestickData<UTCTimestamp>[],
+  period: number,
+): LineData<UTCTimestamp>[] {
+  if (points.length < period) return [];
+  const seed = points.slice(0, period).reduce((total, point) => total + point.close, 0) / period;
+  const multiplier = 2 / (period + 1);
+  const values: LineData<UTCTimestamp>[] = [{ time: points[period - 1].time, value: seed }];
+  let previous = seed;
+  for (let index = period; index < points.length; index += 1) {
+    previous = ((points[index].close - previous) * multiplier) + previous;
+    values.push({ time: points[index].time, value: previous });
+  }
+  return values;
+}
+
+function calculateRollingLow(
+  points: CandlestickData<UTCTimestamp>[],
+  period: number,
+): LineData<UTCTimestamp>[] {
+  if (points.length < period) return [];
+  const values: LineData<UTCTimestamp>[] = [];
+  for (let index = period - 1; index < points.length; index += 1) {
+    let low = points[index].low;
+    for (let offset = 1; offset < period; offset += 1) {
+      low = Math.min(low, points[index - offset].low);
+    }
+    values.push({ time: points[index].time, value: low });
+  }
+  return values;
 }
 
 function applyPriceScaleMargin(chart: IChartApi | null, margin: number) {

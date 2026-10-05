@@ -29,20 +29,33 @@ public static class XauAiEnvironmentVariables
             ["AI_MAX_OUTPUT_TOKENS"] = "AI:MaxOutputTokens",
             ["AI_DAILY_BUDGET_USD"] = "AI:DailyBudgetUsd",
             ["AI_DAILY_REQUEST_LIMIT"] = "AI:DailyRequestLimit",
-            ["MT5_ENABLED"] = "MT5:Enabled",
-            ["MT5_LOGIN"] = "MT5:Login",
-            ["MT5_PASSWORD"] = "MT5:Password",
-            ["MT5_SERVER"] = "MT5:Server",
-            ["MT5_TERMINAL_PATH"] = "MT5:TerminalPath",
-            ["MT5_APPLICATION_SYMBOL"] = "MT5:ApplicationSymbol",
-            ["MT5_SYMBOL"] = "MT5:Symbol",
-            ["MT5_TIMEZONE"] = "MT5:TimeZone",
-            ["MT5_CONNECTION_TIMEOUT_SECONDS"] = "MT5:ConnectionTimeoutSeconds",
-            ["MT5_REQUEST_TIMEOUT_SECONDS"] = "MT5:RequestTimeoutSeconds",
-            ["MT5_RECONNECT_DELAY_SECONDS"] = "MT5:ReconnectDelaySeconds",
-            ["MT5_MAX_BARS_PER_REQUEST"] = "MT5:MaxBarsPerRequest",
-            ["MT5_PYTHON_EXECUTABLE"] = "MT5:PythonExecutable",
-            ["MT5_BRIDGE_SCRIPT_PATH"] = "MT5:BridgeScriptPath",
+            ["ALLTICK_ENABLED"] = "AllTick:Enabled",
+            ["ALLTICK_TOKEN"] = "AllTick:Token",
+            ["ALLTICK_APPLICATION_SYMBOL"] = "AllTick:ApplicationSymbol",
+            ["ALLTICK_SYMBOL"] = "AllTick:Symbol",
+            ["ALLTICK_HTTP_BASE_URL"] = "AllTick:HttpBaseUrl",
+            ["ALLTICK_WEBSOCKET_URL"] = "AllTick:WebSocketUrl",
+            ["ALLTICK_REQUEST_TIMEOUT_SECONDS"] = "AllTick:RequestTimeoutSeconds",
+            ["ALLTICK_RECONNECT_DELAY_SECONDS"] = "AllTick:ReconnectDelaySeconds",
+            ["ALLTICK_HEARTBEAT_INTERVAL_SECONDS"] = "AllTick:HeartbeatIntervalSeconds",
+            ["ALLTICK_QUOTE_MAX_AGE_SECONDS"] = "AllTick:QuoteMaxAgeSeconds",
+            ["ALLTICK_REALTIME_PERSIST_INTERVAL_SECONDS"] = "AllTick:RealtimePersistIntervalSeconds",
+            ["ALLTICK_MAX_BARS_PER_REQUEST"] = "AllTick:MaxBarsPerRequest",
+            ["ALLTICK_MINIMUM_HTTP_REQUEST_INTERVAL_SECONDS"] = "AllTick:MinimumHttpRequestIntervalSeconds",
+            ["TWELVE_DATA_ENABLED"] = "TwelveData:Enabled",
+            ["TWELVE_DATA_API_KEY"] = "TwelveData:ApiKey",
+            ["TWELVE_DATA_APPLICATION_SYMBOL"] = "TwelveData:ApplicationSymbol",
+            ["TWELVE_DATA_SYMBOL"] = "TwelveData:Symbol",
+            ["TWELVE_DATA_BASE_URL"] = "TwelveData:BaseUrl",
+            ["TWELVE_DATA_REQUEST_TIMEOUT_SECONDS"] = "TwelveData:RequestTimeoutSeconds",
+            ["TWELVE_DATA_MINIMUM_REQUEST_INTERVAL_SECONDS"] = "TwelveData:MinimumRequestIntervalSeconds",
+            ["TWELVE_DATA_REFERENCE_SYNC_INTERVAL_SECONDS"] = "TwelveData:ReferenceSyncIntervalSeconds",
+            ["TWELVE_DATA_INITIAL_HISTORY_DAYS"] = "TwelveData:InitialHistoryDays",
+            ["TWELVE_DATA_INCREMENTAL_LOOKBACK_MINUTES"] = "TwelveData:IncrementalLookbackMinutes",
+            ["TWELVE_DATA_MAXIMUM_POINTS_PER_REQUEST"] = "TwelveData:MaximumPointsPerRequest",
+            ["TWELVE_DATA_MAXIMUM_CLOSE_DEVIATION_BPS"] = "TwelveData:MaximumCloseDeviationBps",
+            ["MARKET_DATA_PROVIDER"] = "MarketData:Provider",
+            ["MARKET_DATA_PROVIDER_KEY"] = "MarketData:ProviderKey",
             ["MARKET_DATA_SYNC_ENABLED"] = "MarketData:SyncEnabled",
             ["MARKET_DATA_SYMBOL"] = "MarketData:Symbol",
             ["MARKET_DATA_TIMEFRAMES"] = "MarketData:Timeframes",
@@ -134,13 +147,39 @@ public static class XauAiEnvironmentVariables
             ["ECONOMIC_DATA_TRACKED_SERIES"] = "EconomicData:TrackedSeries",
             ["ANALYSTS_ENABLED"] = "Analysts:Enabled",
             ["ANALYST_PROVIDER"] = "Analysts:Provider",
+            ["ANALYST_PROVIDER_KEY"] = "Analysts:ProviderKey",
             ["ANALYST_SOURCE_TYPE"] = "Analysts:SourceType",
             ["ANALYST_REQUIRES_API_KEY"] = "Analysts:RequiresApiKey",
             ["ANALYST_PROVIDER_API_KEY"] = "Analysts:ApiKey",
             ["ANALYST_BASE_URL"] = "Analysts:BaseUrl",
             ["ANALYST_TIMEOUT_SECONDS"] = "Analysts:TimeoutSeconds",
             ["ANALYST_MAX_RETRIES"] = "Analysts:MaxRetries",
-            ["ANALYST_RATE_LIMIT_PER_MINUTE"] = "Analysts:RateLimitPerMinute"
+            ["ANALYST_RATE_LIMIT_PER_MINUTE"] = "Analysts:RateLimitPerMinute",
+            ["ANALYST_SYMBOL"] = "Analysts:Symbol",
+            ["ANALYST_INITIAL_LOOKBACK_DAYS"] = "Analysts:InitialLookbackDays",
+            ["ANALYST_COLLECTION_OVERLAP_MINUTES"] = "Analysts:CollectionOverlapMinutes",
+            ["ANALYST_SYNC_INTERVAL_MINUTES"] = "Analysts:SyncIntervalMinutes",
+            ["ANALYST_PROVIDER_PAGE_SIZE"] = "Analysts:ProviderPageSize",
+            ["ANALYST_MAXIMUM_PAGES_PER_SYNC"] = "Analysts:MaximumPagesPerSync",
+            ["ANALYST_MAXIMUM_PAGE_SIZE"] = "Analysts:MaximumPageSize",
+            ["ANALYST_MAXIMUM_COLLECTION_RANGE_DAYS"] = "Analysts:MaximumCollectionRangeDays",
+            ["ANALYST_RETRY_BASE_DELAY_SECONDS"] = "Analysts:RetryBaseDelaySeconds",
+            ["ANALYST_RELEVANCE_KEYWORDS"] = "Analysts:RelevanceKeywords",
+            ["EVIDENCE_MAXIMUM_PAGE_SIZE"] = "Evidence:MaximumPageSize",
+            ["EVIDENCE_MAXIMUM_QUERY_RANGE_DAYS"] = "Evidence:MaximumQueryRangeDays",
+            ["EVIDENCE_DEFAULT_PACK_LOOKBACK_DAYS"] = "Evidence:DefaultPackLookbackDays",
+            ["EVIDENCE_MAXIMUM_PACK_LOOKBACK_DAYS"] = "Evidence:MaximumPackLookbackDays",
+            ["EVIDENCE_MAXIMUM_PACK_ITEMS_PER_TYPE"] = "Evidence:MaximumPackItemsPerType",
+            ["EVIDENCE_INGESTION_BATCH_SIZE"] = "Evidence:IngestionBatchSize",
+            ["EVIDENCE_CONFLICT_WINDOW_HOURS"] = "Evidence:ConflictWindowHours",
+            ["EVIDENCE_MAXIMUM_CONFLICTS"] = "Evidence:MaximumConflicts",
+            ["AI_INTERPRETATION_PROMPT_VERSION"] = "AiInterpretation:PromptVersion",
+            ["AI_INTERPRETATION_DEFAULT_LOOKBACK_HOURS"] = "AiInterpretation:DefaultLookbackHours",
+            ["AI_INTERPRETATION_MAXIMUM_LOOKBACK_HOURS"] = "AiInterpretation:MaximumLookbackHours",
+            ["AI_INTERPRETATION_MAXIMUM_EVIDENCE_ITEMS"] = "AiInterpretation:MaximumEvidenceItems",
+            ["AI_INTERPRETATION_MAXIMUM_COMPRESSED_CHARACTERS"] = "AiInterpretation:MaximumCompressedCharacters",
+            ["AI_INTERPRETATION_CURRENT_CONTEXT_CACHE_MINUTES"] = "AiInterpretation:CurrentContextCacheMinutes",
+            ["AI_INTERPRETATION_MAXIMUM_PAGE_SIZE"] = "AiInterpretation:MaximumPageSize"
         };
 
     public static IConfigurationBuilder AddXauAiEnvironmentVariables(
@@ -154,6 +193,15 @@ public static class XauAiEnvironmentVariables
         {
             AddIfPresent(values, mapping.Value, readVariable(mapping.Key));
         }
+
+        AddAiSpecialist(values, readVariable, "NEWS", "News");
+        AddAiSpecialist(values, readVariable, "CANDLE", "Candle");
+        AddAiSpecialist(values, readVariable, "STRUCTURE", "Structure");
+        AddAiSpecialist(values, readVariable, "LIQUIDITY", "Liquidity");
+        AddAiSpecialist(values, readVariable, "FLOW", "Flow");
+        AddAiSpecialist(values, readVariable, "KTR", "Ktr");
+        AddAiSpecialist(values, readVariable, "RISK", "Risk");
+        AddAiSpecialist(values, readVariable, "MASTER", "Master");
 
         AddFirstPresent(values, "AI:ApiKey", readVariable, "AI_API_KEY", "OPENAI_API_KEY");
         AddFirstPresent(values, "AI:Model", readVariable, "AI_MODEL", "OPENAI_MODEL");
@@ -187,6 +235,36 @@ public static class XauAiEnvironmentVariables
                 values[configurationKey] = value;
                 return;
             }
+        }
+    }
+
+    private static void AddAiSpecialist(
+        Dictionary<string, string?> values,
+        Func<string, string?> readVariable,
+        string environmentPrefix,
+        string configurationName)
+    {
+        var fields = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["ENABLED"] = "Enabled",
+            ["PROVIDER"] = "Provider",
+            ["ADAPTER"] = "Adapter",
+            ["REQUIRES_API_KEY"] = "RequiresApiKey",
+            ["API_KEY"] = "ApiKey",
+            ["MODEL"] = "Model",
+            ["BASE_URL"] = "BaseUrl",
+            ["TEMPERATURE"] = "Temperature",
+            ["TIMEOUT_SECONDS"] = "TimeoutSeconds",
+            ["MAX_OUTPUT_TOKENS"] = "MaxOutputTokens",
+            ["MAX_RETRIES"] = "MaxRetries",
+            ["REQUESTS_PER_MINUTE"] = "RequestsPerMinute"
+        };
+        foreach (var field in fields)
+        {
+            AddIfPresent(
+                values,
+                $"AiSpecialists:{configurationName}:{field.Value}",
+                readVariable($"{environmentPrefix}_AI_{field.Key}"));
         }
     }
 

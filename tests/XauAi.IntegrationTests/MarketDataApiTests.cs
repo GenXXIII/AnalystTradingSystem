@@ -51,6 +51,22 @@ public sealed class MarketDataApiTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Empty(body.GetProperty("data").GetProperty("candles").EnumerateArray());
     }
 
+    [Fact]
+    public async Task Source_comparison_reports_provider_identity_and_tolerance_result()
+    {
+        using var configuredFactory = CreateFactory();
+        using var client = configuredFactory.CreateClient();
+
+        using var response = await client.GetAsync(
+            "/api/market-data/XAUUSD/source-comparison?timeframe=M1&limit=100");
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("alltick", body.GetProperty("data").GetProperty("primaryProviderKey").GetString());
+        Assert.Equal("twelvedata", body.GetProperty("data").GetProperty("referenceProviderKey").GetString());
+        Assert.True(body.GetProperty("data").GetProperty("isWithinTolerance").GetBoolean());
+    }
+
     [Theory]
     [InlineData("/api/market-data/XAUUSD/latest?limit=10")]
     [InlineData("/api/market-data/XAUUSD/latest?timeframe=H2&limit=10")]
@@ -89,8 +105,10 @@ public sealed class MarketDataApiTests(ApiFactory factory) : IClassFixture<ApiFa
             var store = new ApiMarketDataStore(CreateCandles());
             services.RemoveAll<IMarketDataQueryStore>();
             services.RemoveAll<IMarketDataSyncStateStore>();
+            services.RemoveAll<IMarketDataQualityService>();
             services.AddSingleton<IMarketDataQueryStore>(store);
             services.AddSingleton<IMarketDataSyncStateStore>(store);
+            services.AddSingleton<IMarketDataQualityService, ApiMarketDataQualityService>();
         }));
 
     private static IReadOnlyList<StoredMarketCandle> CreateCandles() =>
@@ -144,5 +162,29 @@ public sealed class MarketDataApiTests(ApiFactory factory) : IClassFixture<ApiFa
         public Task<Guid> StartRunAsync(string symbol, MarketTimeframe timeframe, DateTimeOffset fromUtc, DateTimeOffset toUtc, DateTimeOffset startedAtUtc, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task CompleteRunAsync(Guid runId, MarketDataPipelineResult result, DateTimeOffset completedAtUtc, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task FailRunAsync(Guid runId, MarketDataSyncProgress progress, string errorCode, string safeMessage, DateTimeOffset failedAtUtc, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class ApiMarketDataQualityService : IMarketDataQualityService
+    {
+        public Task<MarketDataSourceComparison> CompareAsync(
+            string symbol,
+            MarketTimeframe timeframe,
+            int limit,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new MarketDataSourceComparison(
+                symbol,
+                timeframe,
+                "alltick",
+                "twelvedata",
+                ReferenceEnabled: true,
+                limit,
+                MatchedCandles: 50,
+                StartUtc,
+                LatestPrimaryClose: 2300m,
+                LatestReferenceClose: 2300.25m,
+                LatestDeviationBps: 1.09m,
+                MaximumDeviationBps: 2.5m,
+                ToleranceBps: 30m,
+                IsWithinTolerance: true));
     }
 }

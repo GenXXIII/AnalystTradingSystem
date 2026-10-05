@@ -5,12 +5,15 @@ using Microsoft.Extensions.Options;
 using XauAi.Infrastructure.Configuration.Options;
 using XauAi.Infrastructure.Configuration.Validation;
 using XauAi.Application.MarketData;
+using XauAi.Application.Analysts;
 using XauAi.Application.News;
 using XauAi.Application.EconomicData;
+using XauAi.Application.Evidence;
 using XauAi.Application.TechnicalAnalysis;
 using XauAi.Infrastructure.MarketData;
-using XauAi.Infrastructure.MarketData.Mt5;
+using XauAi.Infrastructure.MarketData.AllTick;
 using XauAi.Infrastructure.MarketData.Persistence;
+using XauAi.Infrastructure.MarketData.TwelveData;
 using XauAi.Infrastructure.News;
 using XauAi.Infrastructure.News.NewsData;
 using XauAi.Infrastructure.News.Persistence;
@@ -18,13 +21,20 @@ using XauAi.Infrastructure.EconomicData;
 using XauAi.Infrastructure.EconomicData.Fred;
 using XauAi.Infrastructure.EconomicData.Persistence;
 using XauAi.Infrastructure.Persistence;
+using XauAi.Infrastructure.Analysts;
+using XauAi.Infrastructure.Analysts.Persistence;
+using XauAi.Infrastructure.Analysts.Rss;
+using XauAi.Infrastructure.Evidence.Persistence;
+using XauAi.Application.AI;
+using XauAi.Infrastructure.AI;
+using XauAi.Infrastructure.AI.Persistence;
 
 namespace XauAi.Infrastructure;
 
 public static class DependencyInjection
 {
     /// <summary>
-    /// Registers validated configuration, SQL Server persistence, and read-only MT5 market data.
+    /// Registers validated configuration, SQL Server persistence, and provider-backed market data.
     /// </summary>
     public static IServiceCollection AddInfrastructure(
         this IServiceCollection services,
@@ -38,8 +48,14 @@ public static class DependencyInjection
             services, configuration, RedisOptions.SectionName);
         AddValidatedOptions<AiOptions, AiOptionsValidator>(
             services, configuration, AiOptions.SectionName);
-        AddValidatedOptions<Mt5Options, Mt5OptionsValidator>(
-            services, configuration, Mt5Options.SectionName);
+        AddValidatedOptions<AiInterpretationOptions, AiInterpretationOptionsValidator>(
+            services, configuration, AiInterpretationOptions.SectionName);
+        AddValidatedOptions<AiSpecialistsOptions, AiSpecialistsOptionsValidator>(
+            services, configuration, AiSpecialistsOptions.SectionName);
+        AddValidatedOptions<AllTickOptions, AllTickOptionsValidator>(
+            services, configuration, AllTickOptions.SectionName);
+        AddValidatedOptions<TwelveDataOptions, TwelveDataOptionsValidator>(
+            services, configuration, TwelveDataOptions.SectionName);
         AddValidatedOptions<MarketDataOptions, MarketDataOptionsValidator>(
             services, configuration, MarketDataOptions.SectionName);
         AddValidatedOptions<TechnicalAnalysisOptions, TechnicalAnalysisOptionsValidator>(
@@ -50,6 +66,8 @@ public static class DependencyInjection
             services, configuration, EconomicDataOptions.SectionName);
         AddValidatedOptions<AnalystOptions, AnalystOptionsValidator>(
             services, configuration, AnalystOptions.SectionName);
+        AddValidatedOptions<EvidenceOptions, EvidenceOptionsValidator>(
+            services, configuration, EvidenceOptions.SectionName);
         AddValidatedOptions<ApiOptions, ApiOptionsValidator>(
             services, configuration, ApiOptions.SectionName);
 
@@ -59,8 +77,13 @@ public static class DependencyInjection
         var marketDataOptions = configuration
             .GetSection(MarketDataOptions.SectionName)
             .Get<MarketDataOptions>() ?? new MarketDataOptions();
+        var twelveDataOptions = configuration
+            .GetSection(TwelveDataOptions.SectionName)
+            .Get<TwelveDataOptions>() ?? new TwelveDataOptions();
         var marketDataSettings = new MarketDataPipelineSettings
         {
+            Provider = marketDataOptions.Provider,
+            ProviderKey = marketDataOptions.ProviderKey,
             SyncEnabled = marketDataOptions.SyncEnabled,
             Symbol = marketDataOptions.Symbol,
             Timeframes = [.. marketDataOptions.Timeframes
@@ -79,9 +102,17 @@ public static class DependencyInjection
             MaxRetries = marketDataOptions.MaxRetries,
             RetryBaseDelaySeconds = marketDataOptions.RetryBaseDelaySeconds,
             MaxGapResults = marketDataOptions.MaxGapResults,
-            IncludeFormingCandle = marketDataOptions.IncludeFormingCandle
+            IncludeFormingCandle = marketDataOptions.IncludeFormingCandle,
+            ReferenceDataEnabled = twelveDataOptions.Enabled,
+            ReferenceProviderKey = twelveDataOptions.ProviderKey,
+            ReferenceMaximumCloseDeviationBps = twelveDataOptions.MaximumCloseDeviationBps
         };
         services.AddSingleton(marketDataSettings);
+        var allTickOptions = configuration
+            .GetSection(AllTickOptions.SectionName)
+            .Get<AllTickOptions>() ?? new AllTickOptions();
+        services.AddSingleton(allTickOptions);
+        services.AddSingleton(twelveDataOptions);
         var technicalOptions = configuration
             .GetSection(TechnicalAnalysisOptions.SectionName)
             .Get<TechnicalAnalysisOptions>() ?? new TechnicalAnalysisOptions();
@@ -168,6 +199,68 @@ public static class DependencyInjection
             RetryBaseDelaySeconds = economicOptions.RetryBaseDelaySeconds,
             Series = ParseEconomicSeries(economicOptions.TrackedSeries)
         });
+        var analystOptions = configuration
+            .GetSection(AnalystOptions.SectionName)
+            .Get<AnalystOptions>() ?? new AnalystOptions();
+        services.AddSingleton(analystOptions);
+        services.AddSingleton(new AnalystSettings
+        {
+            Enabled = analystOptions.Enabled,
+            Provider = analystOptions.Provider,
+            ProviderKey = analystOptions.ProviderKey,
+            Symbol = analystOptions.Symbol,
+            InitialLookbackDays = analystOptions.InitialLookbackDays,
+            CollectionOverlapMinutes = analystOptions.CollectionOverlapMinutes,
+            SyncIntervalMinutes = analystOptions.SyncIntervalMinutes,
+            ProviderPageSize = analystOptions.ProviderPageSize,
+            MaximumPagesPerSync = analystOptions.MaximumPagesPerSync,
+            MaximumPageSize = analystOptions.MaximumPageSize,
+            MaximumCollectionRangeDays = analystOptions.MaximumCollectionRangeDays,
+            MaxRetries = analystOptions.MaxRetries,
+            RetryBaseDelaySeconds = analystOptions.RetryBaseDelaySeconds,
+            RelevanceKeywords = ParseValues(analystOptions.RelevanceKeywords)
+        });
+        var evidenceOptions = configuration
+            .GetSection(EvidenceOptions.SectionName)
+            .Get<EvidenceOptions>() ?? new EvidenceOptions();
+        services.AddSingleton(new EvidenceSettings
+        {
+            MaximumPageSize = evidenceOptions.MaximumPageSize,
+            MaximumQueryRangeDays = evidenceOptions.MaximumQueryRangeDays,
+            DefaultPackLookbackDays = evidenceOptions.DefaultPackLookbackDays,
+            MaximumPackLookbackDays = evidenceOptions.MaximumPackLookbackDays,
+            MaximumPackItemsPerType = evidenceOptions.MaximumPackItemsPerType,
+            IngestionBatchSize = evidenceOptions.IngestionBatchSize,
+            ConflictWindowHours = evidenceOptions.ConflictWindowHours,
+            MaximumConflicts = evidenceOptions.MaximumConflicts
+        });
+        var aiInterpretationOptions = configuration
+            .GetSection(AiInterpretationOptions.SectionName)
+            .Get<AiInterpretationOptions>() ?? new AiInterpretationOptions();
+        services.AddSingleton(new AiInterpretationSettings
+        {
+            PromptVersion = aiInterpretationOptions.PromptVersion,
+            DefaultLookbackHours = aiInterpretationOptions.DefaultLookbackHours,
+            MaximumLookbackHours = aiInterpretationOptions.MaximumLookbackHours,
+            MaximumEvidenceItems = aiInterpretationOptions.MaximumEvidenceItems,
+            MaximumCompressedCharacters = aiInterpretationOptions.MaximumCompressedCharacters,
+            CurrentContextCacheMinutes = aiInterpretationOptions.CurrentContextCacheMinutes,
+            MaximumPageSize = aiInterpretationOptions.MaximumPageSize
+        });
+        var aiSpecialistOptions = configuration
+            .GetSection(AiSpecialistsOptions.SectionName)
+            .Get<AiSpecialistsOptions>() ?? new AiSpecialistsOptions();
+        services.AddSingleton(new AiSpecialistCatalog(
+        [
+            Map(AiSpecialist.News, aiSpecialistOptions.News),
+            Map(AiSpecialist.Candle, aiSpecialistOptions.Candle),
+            Map(AiSpecialist.Structure, aiSpecialistOptions.Structure),
+            Map(AiSpecialist.Liquidity, aiSpecialistOptions.Liquidity),
+            Map(AiSpecialist.Flow, aiSpecialistOptions.Flow),
+            Map(AiSpecialist.Ktr, aiSpecialistOptions.Ktr),
+            Map(AiSpecialist.Risk, aiSpecialistOptions.Risk),
+            Map(AiSpecialist.Master, aiSpecialistOptions.Master)
+        ]));
 
         if (databaseOptions.Enabled)
         {
@@ -188,6 +281,7 @@ public static class DependencyInjection
             services.AddScoped<MarketDataReferenceResolver>();
             services.AddScoped<IMarketDataQueryStore, EfMarketDataQueryStore>();
             services.AddScoped<IMarketDataSyncStateStore, EfMarketDataSyncStateStore>();
+            services.AddScoped<IMarketDataSourceComparisonStore, EfMarketDataSourceComparisonStore>();
             services.AddScoped<NewsReferenceResolver>();
             services.AddScoped<INewsArticleStore, EfNewsArticleStore>();
             services.AddScoped<INewsQueryStore, EfNewsQueryStore>();
@@ -196,18 +290,30 @@ public static class DependencyInjection
             services.AddScoped<IEconomicSeriesStore, EfEconomicSeriesStore>();
             services.AddScoped<IEconomicObservationStore, EfEconomicObservationStore>();
             services.AddScoped<IEconomicSyncStateStore, EfEconomicSyncStateStore>();
+            services.AddScoped<AnalystReferenceResolver>();
+            services.AddScoped<IAnalystIngestionStore, EfAnalystIngestionStore>();
+            services.AddScoped<IAnalystQueryStore, EfAnalystQueryStore>();
+            services.AddScoped<IAnalystSyncStateStore, EfAnalystSyncStateStore>();
+            services.AddScoped<IEvidenceStore, EfEvidenceStore>();
+            services.AddScoped<IAiInterpretationStore, EfAiInterpretationStore>();
         }
         else
         {
             services.AddSingleton<IMarketCandleStore, DisabledMarketCandleStore>();
             services.AddSingleton<IMarketDataQueryStore, DisabledMarketDataQueryStore>();
             services.AddSingleton<IMarketDataSyncStateStore, DisabledMarketDataSyncStateStore>();
+            services.AddSingleton<IMarketDataSourceComparisonStore, DisabledMarketDataSourceComparisonStore>();
             services.AddSingleton<INewsArticleStore, DisabledNewsArticleStore>();
             services.AddSingleton<INewsQueryStore, DisabledNewsQueryStore>();
             services.AddSingleton<INewsCollectionStateStore, DisabledNewsCollectionStateStore>();
             services.AddSingleton<IEconomicSeriesStore, DisabledEconomicSeriesStore>();
             services.AddSingleton<IEconomicObservationStore, DisabledEconomicObservationStore>();
             services.AddSingleton<IEconomicSyncStateStore, DisabledEconomicSyncStateStore>();
+            services.AddSingleton<IAnalystIngestionStore, DisabledAnalystIngestionStore>();
+            services.AddSingleton<IAnalystQueryStore, DisabledAnalystQueryStore>();
+            services.AddSingleton<IAnalystSyncStateStore, DisabledAnalystSyncStateStore>();
+            services.AddSingleton<IEvidenceStore, DisabledEvidenceStore>();
+            services.AddSingleton<IAiInterpretationStore, DisabledAiInterpretationStore>();
         }
 
         services.AddSingleton(new HttpClient(new SocketsHttpHandler
@@ -219,6 +325,8 @@ public static class DependencyInjection
             Timeout = Timeout.InfiniteTimeSpan
         });
         services.AddSingleton<INewsProvider, NewsDataProvider>();
+        services.AddSingleton<IAiProvider, OpenAiCompatibleProvider>();
+        services.AddSingleton<IAiProviderFactory, AiProviderFactory>();
         services.AddHostedService<NewsCollectionWorker>();
         services.AddHealthChecks()
             .AddCheck<NewsProviderHealthCheck>(
@@ -245,15 +353,66 @@ public static class DependencyInjection
                 failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded,
                 tags: ["economic-data", "ready"]);
 
-        services.AddSingleton<IMt5BridgeClient, Mt5PythonBridgeClient>();
-        services.AddSingleton<IMt5HostEnvironment, Mt5HostEnvironment>();
-        services.AddSingleton<IMarketDataProvider, Mt5MarketDataProvider>();
-        services.AddHostedService<Mt5TerminalProcessMonitor>();
-        services.AddHostedService<Mt5StartupProbe>();
+        services.AddSingleton<IAnalystDataProvider>(serviceProvider =>
+            new RssAtomAnalystDataProvider(
+                new HttpClient(new SocketsHttpHandler
+                {
+                    PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+                    ConnectTimeout = TimeSpan.FromSeconds(Math.Min(analystOptions.TimeoutSeconds, 30))
+                })
+                {
+                    Timeout = Timeout.InfiniteTimeSpan
+                },
+                analystOptions,
+                serviceProvider.GetRequiredService<TimeProvider>()));
+        services.AddHostedService<AnalystSynchronizationWorker>();
+        services.AddHealthChecks()
+            .AddCheck<AnalystProviderHealthCheck>(
+                "analyst-provider",
+                failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded,
+                tags: ["analyst-data", "ready"]);
+
+        services.AddSingleton<AllTickRealtimeState>();
+        services.AddSingleton(serviceProvider =>
+            new AllTickHttpClient(
+                new HttpClient(new SocketsHttpHandler
+                {
+                    PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+                    ConnectTimeout = TimeSpan.FromSeconds(Math.Min(allTickOptions.RequestTimeoutSeconds, 30))
+                })
+                {
+                    BaseAddress = new Uri(allTickOptions.HttpBaseUrl),
+                    Timeout = Timeout.InfiniteTimeSpan
+                },
+                allTickOptions,
+                serviceProvider.GetRequiredService<TimeProvider>(),
+                serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<AllTickHttpClient>>()));
+        services.AddSingleton<AllTickMarketDataProvider>();
+        services.AddSingleton(serviceProvider =>
+            new TwelveDataHttpClient(
+                new HttpClient(new SocketsHttpHandler
+                {
+                    PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+                    ConnectTimeout = TimeSpan.FromSeconds(Math.Min(twelveDataOptions.RequestTimeoutSeconds, 30))
+                })
+                {
+                    BaseAddress = new Uri(twelveDataOptions.BaseUrl),
+                    Timeout = Timeout.InfiniteTimeSpan
+                },
+                twelveDataOptions,
+                serviceProvider.GetRequiredService<TimeProvider>(),
+                serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<TwelveDataHttpClient>>()));
+        services.AddSingleton<TwelveDataMarketDataProvider>();
+        services.AddSingleton<IReferenceMarketDataProvider>(serviceProvider =>
+            serviceProvider.GetRequiredService<TwelveDataMarketDataProvider>());
+        services.AddSingleton<IMarketDataProvider>(serviceProvider =>
+            serviceProvider.GetRequiredService<AllTickMarketDataProvider>());
+        services.AddHostedService<AllTickRealtimeWorker>();
+        services.AddHostedService<TwelveDataReferenceWorker>();
         services.AddHostedService<MarketDataSynchronizationWorker>();
         services.AddHealthChecks()
-            .AddCheck<Mt5HealthCheck>(
-                "mt5",
+            .AddCheck<MarketDataProviderHealthCheck>(
+                "market-data-provider",
                 failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded,
                 tags: ["market-data", "ready"]);
 
@@ -306,4 +465,19 @@ public static class DependencyInjection
                 parts[0].ToUpperInvariant(),
                 parts[1]))
             .DistinctBy(definition => definition.ExternalSeriesId, StringComparer.OrdinalIgnoreCase)];
+
+    private static AiSpecialistConfiguration Map(AiSpecialist specialist, AiSpecialistOptions options) => new(
+        specialist,
+        options.Enabled,
+        options.Provider,
+        options.Adapter,
+        options.RequiresApiKey,
+        options.ApiKey,
+        options.Model,
+        options.BaseUrl,
+        options.Temperature,
+        options.TimeoutSeconds,
+        options.MaxOutputTokens,
+        options.MaxRetries,
+        options.RequestsPerMinute);
 }

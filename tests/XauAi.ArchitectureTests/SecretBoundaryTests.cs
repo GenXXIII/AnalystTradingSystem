@@ -6,15 +6,23 @@ public sealed class SecretBoundaryTests
     [
         "AI_API_KEY",
         "OPENAI_API_KEY",
-        "MT5_LOGIN",
-        "MT5_PASSWORD",
+        "ALLTICK_TOKEN",
+        "TWELVE_DATA_API_KEY",
         "DATABASE_CONNECTION_STRING",
         "MSSQL_SA_PASSWORD",
         "DATABASE_APP_PASSWORD",
         "NEWS_API_KEY",
         "ECONOMIC_DATA_API_KEY",
         "FRED_API_KEY",
-        "ANALYST_PROVIDER_API_KEY"
+        "ANALYST_PROVIDER_API_KEY",
+        "NEWS_AI_API_KEY",
+        "CANDLE_AI_API_KEY",
+        "STRUCTURE_AI_API_KEY",
+        "LIQUIDITY_AI_API_KEY",
+        "FLOW_AI_API_KEY",
+        "KTR_AI_API_KEY",
+        "RISK_AI_API_KEY",
+        "MASTER_AI_API_KEY"
     ];
 
     [Fact]
@@ -64,8 +72,16 @@ public sealed class SecretBoundaryTests
                 $"{serverOnlyName} must contain a clear non-secret placeholder.");
         }
 
-        Assert.Contains("OPENAI_API_KEY", values.Keys);
-        Assert.Contains("MT5_PASSWORD", values.Keys);
+        Assert.Contains("NEWS_AI_API_KEY", values.Keys);
+        Assert.Contains("CANDLE_AI_API_KEY", values.Keys);
+        Assert.Contains("STRUCTURE_AI_API_KEY", values.Keys);
+        Assert.Contains("LIQUIDITY_AI_API_KEY", values.Keys);
+        Assert.Contains("FLOW_AI_API_KEY", values.Keys);
+        Assert.Contains("KTR_AI_API_KEY", values.Keys);
+        Assert.Contains("RISK_AI_API_KEY", values.Keys);
+        Assert.Contains("MASTER_AI_API_KEY", values.Keys);
+        Assert.Contains("ALLTICK_TOKEN", values.Keys);
+        Assert.Contains("TWELVE_DATA_API_KEY", values.Keys);
         Assert.Contains("DATABASE_CONNECTION_STRING", values.Keys);
         Assert.Contains("NEWS_API_KEY", values.Keys);
         Assert.Contains("FRED_API_KEY", values.Keys);

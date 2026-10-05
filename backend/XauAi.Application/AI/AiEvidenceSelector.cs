@@ -87,16 +87,16 @@ internal sealed class AiEvidenceSelector : IAiEvidenceSelector
     private static bool IsInterpretationTypeRelevant(
         string evidenceType,
         AiInterpretationType interpretationType) => interpretationType switch
-    {
-        AiInterpretationType.NewsEvent => evidenceType is "News" or "Economic" or "Market" or "Technical",
-        AiInterpretationType.MacroData => evidenceType is "Economic" or "News" or "Market" or "Technical",
-        AiInterpretationType.AnalystClaim => evidenceType is "Analyst" or "Market" or "Technical",
-        AiInterpretationType.TechnicalEvidence => evidenceType is "Market" or "Technical" or "Candle"
-            or "CandleFlow" or "Liquidity" or "OrderFlow" or "Session",
-        AiInterpretationType.GeopoliticalRisk => evidenceType is "News" or "Market" or "Technical",
-        AiInterpretationType.EvidenceSynthesis => true,
-        _ => false
-    };
+        {
+            AiInterpretationType.NewsEvent => evidenceType is "News" or "Economic" or "Market" or "Technical",
+            AiInterpretationType.MacroData => evidenceType is "Economic" or "News" or "Market" or "Technical",
+            AiInterpretationType.AnalystClaim => evidenceType is "Analyst" or "Market" or "Technical",
+            AiInterpretationType.TechnicalEvidence => evidenceType is "Market" or "Technical" or "Candle"
+                or "CandleFlow" or "Liquidity" or "OrderFlow" or "Session",
+            AiInterpretationType.GeopoliticalRisk => evidenceType is "News" or "Market" or "Technical",
+            AiInterpretationType.EvidenceSynthesis => true,
+            _ => false
+        };
 
     private static IReadOnlyList<AiEvidenceConflict> DetectConflicts(IReadOnlyList<AiEvidenceCandidate> items)
     {

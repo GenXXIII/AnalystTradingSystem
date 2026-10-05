@@ -93,23 +93,23 @@ public sealed class EvidenceNormalizerTests
         string? direction = "BUY",
         DateTimeOffset? availableAt = null,
         string? metadataJson = "{\"test\":true}") => new()
-    {
-        EvidenceType = EvidenceType.Technical,
-        SourceType = EvidenceSourceType.InternalTechnicalEngine,
-        SourceKey = "test-technical",
-        ExternalId = "test-observation-1",
-        Instrument = symbol,
-        OriginalInstrument = symbol,
-        Timeframe = "15m",
-        EventTime = Now.AddMinutes(-15),
-        AvailableAt = availableAt ?? Now.AddMinutes(-1),
-        Title = "Synthetic test-only technical observation",
-        Direction = direction,
-        Importance = "3",
-        Category = "Technical",
-        Unit = "%",
-        MetadataJson = metadataJson,
-        TimestampQuality = EvidenceTimestampQuality.Exact,
-        SourceReliability = EvidenceSourceReliability.Known
-    };
+        {
+            EvidenceType = EvidenceType.Technical,
+            SourceType = EvidenceSourceType.InternalTechnicalEngine,
+            SourceKey = "test-technical",
+            ExternalId = "test-observation-1",
+            Instrument = symbol,
+            OriginalInstrument = symbol,
+            Timeframe = "15m",
+            EventTime = Now.AddMinutes(-15),
+            AvailableAt = availableAt ?? Now.AddMinutes(-1),
+            Title = "Synthetic test-only technical observation",
+            Direction = direction,
+            Importance = "3",
+            Category = "Technical",
+            Unit = "%",
+            MetadataJson = metadataJson,
+            TimestampQuality = EvidenceTimestampQuality.Exact,
+            SourceReliability = EvidenceSourceReliability.Known
+        };
 }

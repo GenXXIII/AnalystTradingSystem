@@ -207,7 +207,22 @@ public static class XauAiEnvironmentVariables
             ["AI_INTERPRETATION_MAXIMUM_EVIDENCE_ITEMS"] = "AiInterpretation:MaximumEvidenceItems",
             ["AI_INTERPRETATION_MAXIMUM_COMPRESSED_CHARACTERS"] = "AiInterpretation:MaximumCompressedCharacters",
             ["AI_INTERPRETATION_CURRENT_CONTEXT_CACHE_MINUTES"] = "AiInterpretation:CurrentContextCacheMinutes",
-            ["AI_INTERPRETATION_MAXIMUM_PAGE_SIZE"] = "AiInterpretation:MaximumPageSize"
+            ["AI_INTERPRETATION_MAXIMUM_PAGE_SIZE"] = "AiInterpretation:MaximumPageSize",
+            ["TARGET_ANALYST_ENABLED"] = "TargetAnalyst:Enabled",
+            ["TARGET_ANALYST_SYMBOL"] = "TargetAnalyst:Symbol",
+            ["TARGET_ANALYST_TIMEFRAMES"] = "TargetAnalyst:Timeframes",
+            ["TARGET_ANALYST_EVIDENCE_LOOKBACK_HOURS"] = "TargetAnalyst:EvidenceLookbackHours",
+            ["TARGET_ANALYST_MAXIMUM_EVIDENCE_ITEMS_PER_WORKSPACE"] = "TargetAnalyst:MaximumEvidenceItemsPerWorkspace",
+            ["TARGET_ANALYST_MAXIMUM_COMPRESSED_CHARACTERS"] = "TargetAnalyst:MaximumCompressedCharacters",
+            ["TARGET_ANALYST_MINIMUM_MARKET_TIMEFRAMES"] = "TargetAnalyst:MinimumMarketTimeframes",
+            ["TARGET_ANALYST_STALE_AFTER_INTERVALS"] = "TargetAnalyst:StaleAfterIntervals",
+            ["TARGET_ANALYST_MINIMUM_CONFIDENCE"] = "TargetAnalyst:MinimumConfidence",
+            ["TARGET_ANALYST_MINIMUM_TARGET_DISTANCE_ATR"] = "TargetAnalyst:MinimumTargetDistanceAtr",
+            ["TARGET_ANALYST_DEFAULT_VALIDITY_MINUTES"] = "TargetAnalyst:DefaultValidityMinutes",
+            ["TARGET_ANALYST_MAXIMUM_VALIDITY_MINUTES"] = "TargetAnalyst:MaximumValidityMinutes",
+            ["TARGET_ANALYST_MONITOR_INTERVAL_SECONDS"] = "TargetAnalyst:MonitorIntervalSeconds",
+            ["TARGET_ANALYST_MAXIMUM_PAGE_SIZE"] = "TargetAnalyst:MaximumPageSize",
+            ["TARGET_ANALYST_CONFIGURATION_VERSION"] = "TargetAnalyst:ConfigurationVersion"
         };
 
     public static IConfigurationBuilder AddXauAiEnvironmentVariables(
@@ -230,6 +245,22 @@ public static class XauAiEnvironmentVariables
         AddAiSpecialist(values, readVariable, "KTR", "Ktr");
         AddAiSpecialist(values, readVariable, "RISK", "Risk");
         AddAiSpecialist(values, readVariable, "MASTER", "Master");
+        AddTargetWorkspace(values, readVariable, "TARGET_STRUCTURE", "Structure");
+        AddTargetWorkspace(values, readVariable, "TARGET_LIQUIDITY", "Liquidity");
+        AddTargetWorkspace(values, readVariable, "TARGET_CANDLE", "Candle");
+        AddTargetWorkspace(values, readVariable, "TARGET_FLOW", "Flow");
+        AddTargetWorkspace(values, readVariable, "TARGET_KTR", "Ktr");
+        AddTargetWorkspace(values, readVariable, "TARGET_NEWS", "News");
+        AddTargetWorkspace(values, readVariable, "TARGET_RISK", "Risk");
+        AddTargetWorkspace(values, readVariable, "TARGET_MASTER", "Master");
+        AddTargetApiKey(values, readVariable, "TARGET_STRUCTURE", "Structure");
+        AddTargetApiKey(values, readVariable, "TARGET_LIQUIDITY", "Liquidity");
+        AddTargetApiKey(values, readVariable, "TARGET_CANDLE", "Candle");
+        AddTargetApiKey(values, readVariable, "TARGET_FLOW", "Flow");
+        AddTargetApiKey(values, readVariable, "TARGET_KTR", "Ktr");
+        AddTargetApiKey(values, readVariable, "TARGET_NEWS", "News");
+        AddTargetApiKey(values, readVariable, "TARGET_RISK", "Risk");
+        AddTargetApiKey(values, readVariable, "TARGET_MASTER", "Master");
 
         AddFirstPresent(values, "AI:ApiKey", readVariable, "AI_API_KEY", "OPENAI_API_KEY");
         AddFirstPresent(values, "AI:Model", readVariable, "AI_MODEL", "OPENAI_MODEL");
@@ -295,6 +326,53 @@ public static class XauAiEnvironmentVariables
                 readVariable($"{environmentPrefix}_AI_{field.Key}"));
         }
     }
+
+    private static void AddTargetWorkspace(
+        Dictionary<string, string?> values,
+        Func<string, string?> readVariable,
+        string environmentPrefix,
+        string configurationName)
+    {
+        var fields = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["ENABLED"] = "Enabled",
+            ["PROVIDER"] = "Provider",
+            ["ADAPTER"] = "Adapter",
+            ["REQUIRES_API_KEY"] = "RequiresApiKey",
+            ["API_KEY"] = "ApiKey",
+            ["MODEL"] = "Model",
+            ["BASE_URL"] = "BaseUrl",
+            ["TEMPERATURE"] = "Temperature",
+            ["TIMEOUT_SECONDS"] = "TimeoutSeconds",
+            ["MAX_OUTPUT_TOKENS"] = "MaxOutputTokens",
+            ["MAX_RETRIES"] = "MaxRetries",
+            ["REQUESTS_PER_MINUTE"] = "RequestsPerMinute",
+            ["PROMPT_VERSION"] = "PromptVersion",
+            ["CONFIGURATION_VERSION"] = "ConfigurationVersion"
+        };
+        foreach (var field in fields)
+        {
+            AddIfPresent(
+                values,
+                $"TargetAiWorkspaces:{configurationName}:{field.Value}",
+                readVariable($"{environmentPrefix}_AI_{field.Key}"));
+        }
+    }
+
+    private static void AddTargetApiKey(
+        Dictionary<string, string?> values,
+        Func<string, string?> readVariable,
+        string environmentPrefix,
+        string configurationName) =>
+        AddFirstPresent(
+            values,
+            $"TargetAiWorkspaces:{configurationName}:ApiKey",
+            readVariable,
+            $"{environmentPrefix}_AI_API_KEY",
+            "TARGET_AI_API_KEY",
+            "OPENROUTER_API_KEY",
+            "AI_API_KEY",
+            "OPENAI_API_KEY");
 
     private static void AddIfPresent(
         Dictionary<string, string?> values,

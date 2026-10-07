@@ -31,6 +31,9 @@ using XauAi.Infrastructure.AI;
 using XauAi.Infrastructure.AI.Persistence;
 using XauAi.Infrastructure.LocalAnalysis;
 using XauAi.Infrastructure.LocalAnalysis.Persistence;
+using XauAi.Application.TargetAnalysis;
+using XauAi.Infrastructure.TargetAnalysis;
+using XauAi.Infrastructure.TargetAnalysis.Persistence;
 
 namespace XauAi.Infrastructure;
 
@@ -55,6 +58,10 @@ public static class DependencyInjection
             services, configuration, AiInterpretationOptions.SectionName);
         AddValidatedOptions<AiSpecialistsOptions, AiSpecialistsOptionsValidator>(
             services, configuration, AiSpecialistsOptions.SectionName);
+        AddValidatedOptions<TargetAnalystOptions, TargetAnalystOptionsValidator>(
+            services, configuration, TargetAnalystOptions.SectionName);
+        AddValidatedOptions<TargetAiWorkspacesOptions, TargetAiWorkspacesOptionsValidator>(
+            services, configuration, TargetAiWorkspacesOptions.SectionName);
         AddValidatedOptions<AllTickOptions, AllTickOptionsValidator>(
             services, configuration, AllTickOptions.SectionName);
         AddValidatedOptions<TwelveDataOptions, TwelveDataOptionsValidator>(
@@ -301,6 +308,41 @@ public static class DependencyInjection
             Map(AiSpecialist.Risk, aiSpecialistOptions.Risk),
             Map(AiSpecialist.Master, aiSpecialistOptions.Master)
         ]));
+        var targetAnalystOptions = configuration
+            .GetSection(TargetAnalystOptions.SectionName)
+            .Get<TargetAnalystOptions>() ?? new TargetAnalystOptions();
+        services.AddSingleton(new TargetAnalystSettings
+        {
+            Enabled = targetAnalystOptions.Enabled,
+            Symbol = targetAnalystOptions.Symbol.ToUpperInvariant(),
+            Timeframes = ParseTimeframes(targetAnalystOptions.Timeframes),
+            EvidenceLookbackHours = targetAnalystOptions.EvidenceLookbackHours,
+            MaximumEvidenceItemsPerWorkspace = targetAnalystOptions.MaximumEvidenceItemsPerWorkspace,
+            MaximumCompressedCharacters = targetAnalystOptions.MaximumCompressedCharacters,
+            MinimumMarketTimeframes = targetAnalystOptions.MinimumMarketTimeframes,
+            StaleAfterIntervals = targetAnalystOptions.StaleAfterIntervals,
+            MinimumConfidence = targetAnalystOptions.MinimumConfidence,
+            MinimumTargetDistanceAtr = targetAnalystOptions.MinimumTargetDistanceAtr,
+            DefaultValidityMinutes = targetAnalystOptions.DefaultValidityMinutes,
+            MaximumValidityMinutes = targetAnalystOptions.MaximumValidityMinutes,
+            MonitorIntervalSeconds = targetAnalystOptions.MonitorIntervalSeconds,
+            MaximumPageSize = targetAnalystOptions.MaximumPageSize,
+            ConfigurationVersion = targetAnalystOptions.ConfigurationVersion
+        });
+        var targetWorkspaceOptions = configuration
+            .GetSection(TargetAiWorkspacesOptions.SectionName)
+            .Get<TargetAiWorkspacesOptions>() ?? new TargetAiWorkspacesOptions();
+        services.AddSingleton(new TargetWorkspaceCatalog(
+        [
+            Map(TargetWorkspace.Structure, targetWorkspaceOptions.Structure),
+            Map(TargetWorkspace.Liquidity, targetWorkspaceOptions.Liquidity),
+            Map(TargetWorkspace.Candle, targetWorkspaceOptions.Candle),
+            Map(TargetWorkspace.Flow, targetWorkspaceOptions.Flow),
+            Map(TargetWorkspace.Ktr, targetWorkspaceOptions.Ktr),
+            Map(TargetWorkspace.News, targetWorkspaceOptions.News),
+            Map(TargetWorkspace.Risk, targetWorkspaceOptions.Risk),
+            Map(TargetWorkspace.Master, targetWorkspaceOptions.Master)
+        ]));
 
         if (databaseOptions.Enabled)
         {
@@ -337,6 +379,7 @@ public static class DependencyInjection
             services.AddScoped<IEvidenceStore, EfEvidenceStore>();
             services.AddScoped<IAiInterpretationStore, EfAiInterpretationStore>();
             services.AddScoped<ILocalSignalStore, EfLocalSignalStore>();
+            services.AddScoped<ITargetAnalysisStore, EfTargetAnalysisStore>();
         }
         else
         {
@@ -356,6 +399,7 @@ public static class DependencyInjection
             services.AddSingleton<IEvidenceStore, DisabledEvidenceStore>();
             services.AddSingleton<IAiInterpretationStore, DisabledAiInterpretationStore>();
             services.AddSingleton<ILocalSignalStore, DisabledLocalSignalStore>();
+            services.AddSingleton<ITargetAnalysisStore, DisabledTargetAnalysisStore>();
         }
 
         services.AddSingleton(new HttpClient(new SocketsHttpHandler
@@ -369,6 +413,8 @@ public static class DependencyInjection
         services.AddSingleton<INewsProvider, NewsDataProvider>();
         services.AddSingleton<IAiProvider, OpenAiCompatibleProvider>();
         services.AddSingleton<IAiProviderFactory, AiProviderFactory>();
+        services.AddSingleton<ITargetAiProvider, TargetOpenAiCompatibleProvider>();
+        services.AddSingleton<ITargetAiProviderFactory, TargetAiProviderFactory>();
         services.AddHostedService<NewsCollectionWorker>();
         services.AddHealthChecks()
             .AddCheck<NewsProviderHealthCheck>(
@@ -453,6 +499,7 @@ public static class DependencyInjection
         services.AddHostedService<TwelveDataReferenceWorker>();
         services.AddHostedService<MarketDataSynchronizationWorker>();
         services.AddHostedService<LocalAnalystWorker>();
+        services.AddHostedService<TargetAnalysisMonitoringWorker>();
         services.AddHealthChecks()
             .AddCheck<MarketDataProviderHealthCheck>(
                 "market-data-provider",
@@ -523,4 +570,23 @@ public static class DependencyInjection
         options.MaxOutputTokens,
         options.MaxRetries,
         options.RequestsPerMinute);
+
+    private static TargetWorkspaceConfiguration Map(
+        TargetWorkspace workspace,
+        TargetAiWorkspaceOptions options) => new(
+        workspace,
+        options.Enabled,
+        options.Provider,
+        options.Adapter,
+        options.RequiresApiKey,
+        options.ApiKey,
+        options.Model,
+        options.BaseUrl,
+        options.Temperature,
+        options.TimeoutSeconds,
+        options.MaxOutputTokens,
+        options.MaxRetries,
+        options.RequestsPerMinute,
+        options.PromptVersion,
+        options.ConfigurationVersion);
 }

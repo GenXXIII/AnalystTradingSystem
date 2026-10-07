@@ -9,6 +9,8 @@ using XauAi.Domain.Market;
 using XauAi.Domain.News;
 using XauAi.Domain.ReferenceData;
 using XauAi.Infrastructure.Persistence;
+using XauAi.Domain.TargetAnalysis;
+using DomainTargetAnalysis = XauAi.Domain.TargetAnalysis.TargetAnalysis;
 
 namespace XauAi.UnitTests.Persistence;
 
@@ -36,11 +38,27 @@ public sealed class PersistenceModelTests
             "EconomicSyncStates", "EconomicSyncRuns",
             "Strategies", "StrategyVersions", "StrategyEvaluations", "StrategyEvaluationEvidence",
             "TradingSignals", "TradingSignalEvidence", "SignalOutcomes", "BacktestRuns",
-            "BacktestTrades", "PerformanceStatistics"
+            "BacktestTrades", "PerformanceStatistics", "TargetAnalyses", "TargetSpecialistResults",
+            "TargetAnalysisEvidence", "TargetAnalysisLifecycleEvents"
         };
 
         Assert.True(tableNames.Count >= expectedTables.Length);
         Assert.All(expectedTables, table => Assert.Contains(table, tableNames));
+    }
+
+    [Fact]
+    public void Target_analysis_model_preserves_one_result_graph_and_lifecycle_history()
+    {
+        AssertIndexes<DomainTargetAnalysis>(
+            "IX_TargetAnalyses_Symbol_Status_AnalysisTimeUtc",
+            "IX_TargetAnalyses_Instrument_Timeframe_AnalysisTimeUtc");
+        AssertIndexes<TargetSpecialistResult>("UX_TargetSpecialistResults_Analysis_Workspace");
+        AssertIndexes<TargetAnalysisLifecycleEvent>("IX_TargetAnalysisLifecycleEvents_Analysis_Time");
+
+        var target = _dbContext.GetService<IDesignTimeModel>().Model.FindEntityType(typeof(DomainTargetAnalysis));
+        Assert.Equal("decimal(19,8)", target?.FindProperty(nameof(DomainTargetAnalysis.TargetPrice))?.GetColumnType());
+        Assert.Equal("decimal(9,6)", target?.FindProperty(nameof(DomainTargetAnalysis.Confidence))?.GetColumnType());
+        Assert.Equal("nvarchar(max)", target?.FindProperty(nameof(DomainTargetAnalysis.SnapshotJson))?.GetColumnType());
     }
 
     [Fact]

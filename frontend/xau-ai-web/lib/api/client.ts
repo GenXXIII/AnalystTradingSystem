@@ -1,16 +1,21 @@
 import { environment } from "@/config/environment";
 import { ApiClientError } from "./errors";
 
-const requestTimeoutMilliseconds = 8_000;
+const defaultRequestTimeoutMilliseconds = 8_000;
 
 class ApiClient {
   constructor(private readonly baseUrl: string) {}
 
-  get<TResponse>(path: string, init?: RequestInit): Promise<TResponse> {
-    return this.request<TResponse>(path, { ...init, method: "GET" });
+  get<TResponse>(path: string, init?: RequestInit, timeoutMilliseconds = defaultRequestTimeoutMilliseconds): Promise<TResponse> {
+    return this.request<TResponse>(path, { ...init, method: "GET" }, timeoutMilliseconds);
   }
 
-  post<TResponse, TRequest>(path: string, body: TRequest, init?: RequestInit): Promise<TResponse> {
+  post<TResponse, TRequest>(
+    path: string,
+    body: TRequest,
+    init?: RequestInit,
+    timeoutMilliseconds = defaultRequestTimeoutMilliseconds,
+  ): Promise<TResponse> {
     return this.request<TResponse>(path, {
       ...init,
       method: "POST",
@@ -19,12 +24,16 @@ class ApiClient {
         "Content-Type": "application/json",
         ...init?.headers,
       },
-    });
+    }, timeoutMilliseconds);
   }
 
-  private async request<TResponse>(path: string, init: RequestInit): Promise<TResponse> {
+  private async request<TResponse>(
+    path: string,
+    init: RequestInit,
+    timeoutMilliseconds: number,
+  ): Promise<TResponse> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), requestTimeoutMilliseconds);
+    const timeout = setTimeout(() => controller.abort(), timeoutMilliseconds);
 
     try {
       const response = await fetch(`${this.baseUrl}${normalizePath(path)}`, {

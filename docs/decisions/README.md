@@ -24,3 +24,4 @@ Current records:
 - [ADR-0004: Current economic observations with append-only revisions](0004-economic-observation-revisions.md)
 - [ADR-0005: Analyst claims are immutable attributed evidence](0005-analyst-claims-are-immutable-attributed-evidence.md)
 - [ADR-0006: Availability time governs evidence visibility](0006-availability-time-governs-evidence-visibility.md)
+- [ADR-0007: Target analysis is snapshot-owned and provider-neutral](0007-target-analysis-is-snapshot-owned-and-provider-neutral.md)

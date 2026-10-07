@@ -7,6 +7,7 @@ using XauAi.Application.Evidence;
 using XauAi.Application.TechnicalAnalysis;
 using XauAi.Application.AI;
 using XauAi.Application.LocalAnalysis;
+using XauAi.Application.TargetAnalysis;
 
 namespace XauAi.Api.Middleware;
 
@@ -148,6 +149,22 @@ public sealed class ExceptionHandlingMiddleware(
                 exception.SafeMessage,
                 context.TraceIdentifier));
         }
+        catch (TargetAnalysisException exception) when (!context.Response.HasStarted)
+        {
+            logger.LogWarning(
+                exception,
+                "Target analysis request failed with code {ErrorCode} for {Method} {Path}",
+                exception.Code,
+                context.Request.Method,
+                context.Request.Path);
+
+            context.Response.Clear();
+            context.Response.StatusCode = TargetAnalysisStatusCode(exception.Code);
+            await context.Response.WriteAsJsonAsync(ApiErrorResponse.Create(
+                exception.Code,
+                exception.SafeMessage,
+                context.TraceIdentifier));
+        }
         catch (BadHttpRequestException exception) when (!context.Response.HasStarted)
         {
             logger.LogWarning(
@@ -279,6 +296,27 @@ public sealed class ExceptionHandlingMiddleware(
         LocalAnalystErrorCodes.SignalNotFound => StatusCodes.Status404NotFound,
         LocalAnalystErrorCodes.Disabled
             or LocalAnalystErrorCodes.DatabaseDisabled => StatusCodes.Status503ServiceUnavailable,
+        _ => StatusCodes.Status500InternalServerError
+    };
+
+    private static int TargetAnalysisStatusCode(string code) => code switch
+    {
+        TargetAnalysisErrorCodes.InvalidRequest => StatusCodes.Status400BadRequest,
+        TargetAnalysisErrorCodes.NotFound => StatusCodes.Status404NotFound,
+        TargetAnalysisErrorCodes.InvalidState => StatusCodes.Status409Conflict,
+        TargetAnalysisErrorCodes.RateLimited => StatusCodes.Status429TooManyRequests,
+        TargetAnalysisErrorCodes.Timeout => StatusCodes.Status504GatewayTimeout,
+        TargetAnalysisErrorCodes.InvalidResponse => StatusCodes.Status502BadGateway,
+        TargetAnalysisErrorCodes.MissingMarketData
+            or TargetAnalysisErrorCodes.NoEvidence => StatusCodes.Status422UnprocessableEntity,
+        TargetAnalysisErrorCodes.Disabled
+            or TargetAnalysisErrorCodes.DatabaseDisabled
+            or TargetAnalysisErrorCodes.WorkspaceDisabled
+            or TargetAnalysisErrorCodes.WorkspaceNotConfigured
+            or TargetAnalysisErrorCodes.ProviderNotSupported
+            or TargetAnalysisErrorCodes.AuthenticationFailed
+            or TargetAnalysisErrorCodes.TokenLimit
+            or TargetAnalysisErrorCodes.Unavailable => StatusCodes.Status503ServiceUnavailable,
         _ => StatusCodes.Status500InternalServerError
     };
 }

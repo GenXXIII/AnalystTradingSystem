@@ -29,11 +29,11 @@ body {
 button, input, select { font: inherit; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 h1, h2, h3, p, dl, dd { margin: 0; }
-html, body, .terminal-table-scroll, .analysis-panel, .control-modal-body, .news-list, .market-header, .chart-toolbar, .status-bar {
+html, body, .terminal-table-scroll, .analysis-panel, .local-signal-panel, .control-modal-body, .news-list, .market-header, .chart-toolbar, .status-bar {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
-html::-webkit-scrollbar, body::-webkit-scrollbar, .terminal-table-scroll::-webkit-scrollbar, .analysis-panel::-webkit-scrollbar, .control-modal-body::-webkit-scrollbar, .news-list::-webkit-scrollbar, .market-header::-webkit-scrollbar, .chart-toolbar::-webkit-scrollbar, .status-bar::-webkit-scrollbar {
+html::-webkit-scrollbar, body::-webkit-scrollbar, .terminal-table-scroll::-webkit-scrollbar, .analysis-panel::-webkit-scrollbar, .local-signal-panel::-webkit-scrollbar, .control-modal-body::-webkit-scrollbar, .news-list::-webkit-scrollbar, .market-header::-webkit-scrollbar, .chart-toolbar::-webkit-scrollbar, .status-bar::-webkit-scrollbar {
   display: none;
 }
 
@@ -122,6 +122,11 @@ html::-webkit-scrollbar, body::-webkit-scrollbar, .terminal-table-scroll::-webki
 .chart-timeframes button { min-width: 32px; height: 25px; padding: 0 7px; cursor: pointer; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--muted); font-size: 9px; font-weight: 800; }
 .chart-timeframes button:hover, .chart-timeframes button.active { border-color: rgba(40, 200, 187, .45); background: var(--cyan-soft); color: var(--cyan); }
 .chart-context { flex: 0 0 auto; padding-left: 8px; border-left: 1px solid var(--line); color: var(--text); }
+.chart-provider, .chart-session { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; padding-left: 8px; border-left: 1px solid var(--line); white-space: nowrap; }
+.chart-provider.connected { color: var(--cyan); }
+.chart-provider.waiting { color: var(--red); }
+.chart-provider.reference { color: #9fb0b6; }
+.chart-session { color: var(--amber); }
 .chart-source { margin-left: auto; font-weight: 500; }
 .chart-wrap { position: relative; min-height: 260px; flex: 1; overflow: hidden; background: var(--bg); }
 .chart-wrap[data-market-state="closed"]::after { position: absolute; z-index: 2; inset: 0; border: 1px solid rgba(113, 128, 135, .14); content: ""; pointer-events: none; }
@@ -202,7 +207,20 @@ html::-webkit-scrollbar, body::-webkit-scrollbar, .terminal-table-scroll::-webki
 .analysis-conflicts strong { margin-bottom: 4px; color: var(--text); font-size: 9px; }
 .analysis-conflicts span { color: var(--muted); font-size: 8px; line-height: 1.4; }
 .analysis-footer { margin-top: auto; padding: 0 12px 11px; color: var(--faint); font-size: 8px; }
-.quality-panel { display: flex; flex-direction: column; }
+.local-signal-panel { display: flex; flex-direction: column; overflow-y: auto; }
+.local-signal-panel > .panel-header { position: sticky; z-index: 2; top: 0; flex: 0 0 auto; }
+.local-signal-hero { display: grid; grid-template-columns: 42px 1fr; gap: 11px; align-items: center; min-height: 82px; padding: 13px 12px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.local-signal-symbol { display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid var(--line); border-radius: 50%; color: var(--faint); font-size: 22px; font-weight: 900; }
+.local-signal-hero strong, .local-signal-hero small { display: block; }
+.local-signal-hero strong { margin-bottom: 5px; font-size: 13px; }
+.local-signal-hero small { color: var(--muted); font-size: 9px; line-height: 1.4; }
+.local-signal-hero[data-state="buy"] .local-signal-symbol { border-color: rgba(40, 200, 187, .35); background: var(--cyan-soft); color: var(--cyan); }
+.local-signal-hero[data-state="sell"] .local-signal-symbol { border-color: rgba(255, 97, 112, .35); background: var(--red-soft); color: var(--red); }
+.local-signal-hero[data-state="stop"] .local-signal-symbol { border-color: rgba(230, 185, 94, .35); background: rgba(230, 185, 94, .08); color: var(--amber); }
+.local-signal-details { padding-bottom: 4px; }
+.local-signal-evidence { padding: 12px; border-top: 1px solid var(--line); }
+.local-signal-evidence .analysis-section-title { margin-bottom: 4px; }
+.local-signal-note { margin: auto 12px 8px; padding: 9px; border: 1px solid var(--line); border-radius: 3px; background: var(--surface-2); color: var(--muted); font-size: 9px; line-height: 1.45; }
 .connection-row { display: grid; grid-template-columns: 10px 1fr; gap: 9px; align-items: start; padding: 14px 12px; border-bottom: 1px solid var(--line-soft); }
 .connection-row strong, .connection-row small { display: block; }
 .connection-row strong { margin-bottom: 5px; font-size: 11px; }

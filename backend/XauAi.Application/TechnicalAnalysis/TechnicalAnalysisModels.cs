@@ -191,7 +191,10 @@ public sealed record SupportResistanceZone(
     string Strength,
     int Touches,
     IReadOnlyList<MarketTimeframe> Timeframes,
-    decimal DistanceFromPricePercent);
+    decimal DistanceFromPricePercent,
+    string Source = "SwingCluster",
+    DateTimeOffset? CreatedAtUtc = null,
+    string Status = "Active");
 
 public sealed record PriceActionResult(
     bool RangeExpansion,

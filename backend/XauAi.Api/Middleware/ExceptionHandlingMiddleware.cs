@@ -6,6 +6,7 @@ using XauAi.Application.Analysts;
 using XauAi.Application.Evidence;
 using XauAi.Application.TechnicalAnalysis;
 using XauAi.Application.AI;
+using XauAi.Application.LocalAnalysis;
 
 namespace XauAi.Api.Middleware;
 
@@ -126,6 +127,22 @@ public sealed class ExceptionHandlingMiddleware(
 
             context.Response.Clear();
             context.Response.StatusCode = AiInterpretationStatusCode(exception.Code);
+            await context.Response.WriteAsJsonAsync(ApiErrorResponse.Create(
+                exception.Code,
+                exception.SafeMessage,
+                context.TraceIdentifier));
+        }
+        catch (LocalAnalystException exception) when (!context.Response.HasStarted)
+        {
+            logger.LogWarning(
+                exception,
+                "Local analyst request failed with code {ErrorCode} for {Method} {Path}",
+                exception.Code,
+                context.Request.Method,
+                context.Request.Path);
+
+            context.Response.Clear();
+            context.Response.StatusCode = LocalAnalystStatusCode(exception.Code);
             await context.Response.WriteAsJsonAsync(ApiErrorResponse.Create(
                 exception.Code,
                 exception.SafeMessage,
@@ -253,6 +270,15 @@ public sealed class ExceptionHandlingMiddleware(
             or AiInterpretationErrorCodes.Unavailable
             or AiInterpretationErrorCodes.TokenLimit
             or AiInterpretationErrorCodes.DatabaseDisabled => StatusCodes.Status503ServiceUnavailable,
+        _ => StatusCodes.Status500InternalServerError
+    };
+
+    private static int LocalAnalystStatusCode(string code) => code switch
+    {
+        LocalAnalystErrorCodes.InvalidRequest => StatusCodes.Status400BadRequest,
+        LocalAnalystErrorCodes.SignalNotFound => StatusCodes.Status404NotFound,
+        LocalAnalystErrorCodes.Disabled
+            or LocalAnalystErrorCodes.DatabaseDisabled => StatusCodes.Status503ServiceUnavailable,
         _ => StatusCodes.Status500InternalServerError
     };
 }

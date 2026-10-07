@@ -30,6 +30,54 @@ public sealed class AiInterpretationServiceTests
         Assert.True(second.CacheHit);
         Assert.Equal(1, runner.CallCount);
         Assert.Equal(1, store.CompletedWrites);
+        Assert.Equal(64, first.ConfigurationVersion.Length);
+        Assert.Equal(first.ConfigurationVersion, second.ConfigurationVersion);
+    }
+
+    [Fact]
+    public async Task Effective_configuration_change_produces_a_new_interpretation()
+    {
+        var now = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var evidence = AiEvidenceSelectionTests.Candidate(Guid.NewGuid(), "News", "XAUUSD", null, now.AddMinutes(-1));
+        var store = new FakeStore(evidence);
+        var firstConfiguration = Configuration(temperature: 0.2);
+        var secondConfiguration = Configuration(temperature: 0.4);
+        var firstRunner = new FakeRunner(firstConfiguration, Completion(evidence.Id));
+        var secondRunner = new FakeRunner(secondConfiguration, Completion(evidence.Id));
+        var request = new CreateAiInterpretationRequest(
+            "XAUUSD", AiSpecialist.News, AiInterpretationType.NewsEvent, null, now, 24);
+
+        var first = await CreateService(store, firstRunner, firstConfiguration).InterpretAsync(request);
+        var second = await CreateService(store, secondRunner, secondConfiguration).InterpretAsync(request);
+
+        Assert.False(second.CacheHit);
+        Assert.NotEqual(first.ConfigurationVersion, second.ConfigurationVersion);
+        Assert.Equal(1, firstRunner.CallCount);
+        Assert.Equal(1, secondRunner.CallCount);
+        Assert.Equal(2, store.CompletedWrites);
+    }
+
+    [Fact]
+    public async Task Api_key_rotation_does_not_persist_a_secret_derived_configuration_version()
+    {
+        var now = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var evidence = AiEvidenceSelectionTests.Candidate(Guid.NewGuid(), "News", "XAUUSD", null, now.AddMinutes(-1));
+        var store = new FakeStore(evidence);
+        var firstConfiguration = Configuration(apiKey: "first-secret");
+        var secondConfiguration = Configuration(apiKey: "second-secret");
+        var firstRunner = new FakeRunner(firstConfiguration, Completion(evidence.Id));
+        var secondRunner = new FakeRunner(secondConfiguration, Completion(evidence.Id));
+        var request = new CreateAiInterpretationRequest(
+            "XAUUSD", AiSpecialist.News, AiInterpretationType.NewsEvent, null, now, 24);
+
+        var first = await CreateService(store, firstRunner, firstConfiguration).InterpretAsync(request);
+        var second = await CreateService(store, secondRunner, secondConfiguration).InterpretAsync(request);
+
+        Assert.True(second.CacheHit);
+        Assert.Equal(first.ConfigurationVersion, second.ConfigurationVersion);
+        Assert.DoesNotContain("first-secret", first.ConfigurationVersion, StringComparison.Ordinal);
+        Assert.DoesNotContain("second-secret", second.ConfigurationVersion, StringComparison.Ordinal);
+        Assert.Equal(0, secondRunner.CallCount);
     }
 
     [Fact]
@@ -122,16 +170,18 @@ public sealed class AiInterpretationServiceTests
         TimeProvider.System,
         NullLogger<AiInterpretationService>.Instance);
 
-    private static AiSpecialistConfiguration Configuration() => new(
+    private static AiSpecialistConfiguration Configuration(
+        double temperature = 0.2,
+        string apiKey = "test-key") => new(
         AiSpecialist.News,
         true,
         "ProviderA",
         "OpenAiCompatible",
         true,
-        "test-key",
+        apiKey,
         "model-a",
         "https://example.test/v1/",
-        0.2,
+        temperature,
         30,
         2000,
         0,
@@ -231,6 +281,7 @@ public sealed class AiInterpretationServiceTests
                 value.Provider,
                 value.Model,
                 value.PromptVersion,
+                value.ConfigurationVersion,
                 value.EvidenceVersion,
                 value.AnalysisTimeUtc,
                 value.EvidenceUpdatedAtUtc,
@@ -256,6 +307,7 @@ public sealed class AiInterpretationServiceTests
                 value.Provider,
                 value.Model,
                 value.PromptVersion,
+                value.ConfigurationVersion,
                 value.EvidenceVersion,
                 value.AnalysisTimeUtc,
                 value.EvidenceUpdatedAtUtc,
@@ -283,6 +335,7 @@ public sealed class AiInterpretationServiceTests
             string provider,
             string model,
             string promptVersion,
+            string configurationVersion,
             string evidenceVersion,
             DateTimeOffset analysisTime,
             DateTimeOffset evidenceUpdatedAt,
@@ -304,7 +357,7 @@ public sealed class AiInterpretationServiceTests
                 output?.Confidence,
                 output?.Uncertainty ?? string.Empty,
                 output?.Summary ?? string.Empty,
-                provider, model, promptVersion, evidenceVersion,
+                provider, model, promptVersion, configurationVersion, evidenceVersion,
                 analysisTime, evidenceUpdatedAt, createdAt, completedAt,
                 status, lifecycle, false, null, null, null,
                 errorCode, errorMessage, evidenceIds, output);

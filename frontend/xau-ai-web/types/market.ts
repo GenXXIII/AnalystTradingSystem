@@ -108,3 +108,20 @@ export interface MarketDataPipelineResult {
   detectedGaps: number;
   durationMilliseconds: number;
 }
+
+export interface MarketDataSourceComparison {
+  symbol: string;
+  timeframe: string;
+  primaryProviderKey: string;
+  referenceProviderKey: string;
+  referenceEnabled: boolean;
+  requestedLimit: number;
+  matchedCandles: number;
+  latestComparedOpenTimeUtc: string | null;
+  latestPrimaryClose: number | null;
+  latestReferenceClose: number | null;
+  latestDeviationBps: number | null;
+  maximumDeviationBps: number | null;
+  toleranceBps: number;
+  isWithinTolerance: boolean | null;
+}

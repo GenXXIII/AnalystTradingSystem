@@ -93,6 +93,35 @@ public sealed class AiResponseValidatorTests
         Assert.Equal(AiInterpretationErrorCodes.InvalidResponse, exception.Code);
     }
 
+    [Fact]
+    public void Economic_previous_expected_and_actual_values_are_valid_measurements()
+    {
+        var evidence = AiEvidenceSelectionTests.Candidate(
+            Guid.NewGuid(), "Economic", "XAUUSD", null, DateTimeOffset.UtcNow) with
+        {
+            Unit = "Percent",
+            PreviousValue = 2.5m,
+            ExpectedValue = 2.7m,
+            ActualValue = 2.9m
+        };
+        var output = Output(evidence.Id, evidence.Id) with
+        {
+            Measurements =
+            [
+                new AiInterpretationMeasurement(evidence.Id, "Previous", 2.5m, "Percent"),
+                new AiInterpretationMeasurement(evidence.Id, "Expected", 2.7m, "Percent"),
+                new AiInterpretationMeasurement(evidence.Id, "Actual", 2.9m, "Percent")
+            ]
+        };
+
+        var result = new AiResponseValidator().Validate(
+            JsonSerializer.Serialize(output, Options),
+            AiInterpretationType.NewsEvent,
+            [evidence]);
+
+        Assert.Equal(3, result.Measurements.Count);
+    }
+
     private static StructuredOutputRecord Output(Guid first, Guid second) => new(
         AiInterpretationType.NewsEvent,
         AiInterpretationDirection.Mixed,

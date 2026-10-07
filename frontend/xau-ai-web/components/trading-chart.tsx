@@ -6,17 +6,21 @@ import {
   ColorType,
   CrosshairMode,
   createChart,
+  createSeriesMarkers,
   type CandlestickData,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
   type LineData,
   LineSeries,
   LineStyle,
   LineType,
+  type SeriesMarker,
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
 import type { MarketQuote, StoredMarketCandle } from "@/types/market";
+import type { LocalSignalChartMarker } from "@/features/analysis/api/get-local-analyst";
 import { formatSessionCountdown, type XauUsdMarketSession } from "@/lib/market/xauusd-session";
 
 const price = new Intl.NumberFormat("en-US", {
@@ -71,13 +75,15 @@ type TradingChartProps = Readonly<{
   timeframe: string;
   nowUtcMilliseconds: number | null;
   marketSession: XauUsdMarketSession | null;
+  signalMarkers: LocalSignalChartMarker[];
 }>;
 
-export function TradingChart({ candles, quote, providerConnected, timeframe, nowUtcMilliseconds, marketSession }: TradingChartProps) {
+export function TradingChart({ candles, quote, providerConnected, timeframe, nowUtcMilliseconds, marketSession, signalMarkers }: TradingChartProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const signalMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const emaSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const priceFloorSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const activeTimeframeRef = useRef<string | null>(null);
@@ -95,6 +101,10 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
   const displayPoints = useMemo(
     () => addClosedSessionDisplayBars(points, timeframe),
     [points, timeframe],
+  );
+  const chartSignalMarkers = useMemo(
+    () => createSignalMarkers(points, signalMarkers),
+    [points, signalMarkers],
   );
   const hasClosedSessionBars = displayPoints.length > points.length;
   const latest = points.at(-1) ?? null;
@@ -197,6 +207,7 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
       priceLineVisible: true,
       lastValueVisible: true,
     });
+    const markerPlugin = createSeriesMarkers(series);
 
     const handleCrosshair = (parameter: { time?: Time; seriesData: Map<unknown, unknown> }) => {
       const data = parameter.seriesData.get(series) as CandlestickData<Time> | undefined;
@@ -224,6 +235,7 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
 
     chartRef.current = chart;
     seriesRef.current = series;
+    signalMarkersRef.current = markerPlugin;
     emaSeriesRef.current = emaSeries;
     priceFloorSeriesRef.current = priceFloorSeries;
     return () => {
@@ -232,6 +244,7 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      signalMarkersRef.current = null;
       emaSeriesRef.current = null;
       priceFloorSeriesRef.current = null;
     };
@@ -243,6 +256,7 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
     if (!series || !chart) return;
 
     series.setData(displayPoints);
+    signalMarkersRef.current?.setMarkers(chartSignalMarkers);
     emaSeriesRef.current?.setData(calculateEma(points, EMA_PERIOD));
     priceFloorSeriesRef.current?.setData(calculateRollingLow(points, PRICE_FLOOR_PERIOD));
     if (!pointerInspectingRef.current) setReadout(latest);
@@ -257,7 +271,7 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
       fitRecentCandles(chart, points, timeframe);
     }
     fittedPointCountRef.current = points.length;
-  }, [displayPoints, latest, points, timeframe, utcDayStartMilliseconds]);
+  }, [chartSignalMarkers, displayPoints, latest, points, timeframe, utcDayStartMilliseconds]);
 
   useEffect(() => {
     seriesRef.current?.applyOptions({
@@ -298,7 +312,7 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
     : null);
   return (
     <div className="chart-wrap" data-market-state={marketSession?.isOpen === false ? "closed" : "open"} ref={shellRef}>
-      <div className="chart-canvas" ref={canvasRef} aria-label={`${points.length} ${timeframe} XAUUSD candles`} />
+      <div className="chart-canvas" ref={canvasRef} aria-label={`${points.length} ${timeframe} XAUUSD candles and ${chartSignalMarkers.length} local signal events`} />
       {points.length === 0 ? (
         <div className="chart-empty" role="status">
           <strong>No chart evidence yet</strong>
@@ -325,6 +339,7 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
         <div className="chart-overlay-legend" aria-label="Chart overlays">
           <span data-overlay="ema">EMA {EMA_PERIOD}</span>
           <span data-overlay="floor">{PRICE_FLOOR_PERIOD}-bar floor</span>
+          {chartSignalMarkers.length > 0 ? <span data-overlay="signal">Signal events</span> : null}
           {hasClosedSessionBars ? <span data-overlay="closed">Closed-session carry</span> : null}
         </div>
       ) : null}
@@ -371,6 +386,50 @@ function normalizeCandles(candles: StoredMarketCandle[]): CandlestickData<UTCTim
     });
   }
   return [...byTime.values()].sort((left, right) => Number(left.time) - Number(right.time));
+}
+
+function createSignalMarkers(
+  points: CandlestickData<UTCTimestamp>[],
+  signalMarkers: LocalSignalChartMarker[],
+): SeriesMarker<UTCTimestamp>[] {
+  const candleTimes = new Set(points.map((point) => Number(point.time)));
+  const seenMarkers = new Set<string>();
+  const markers: SeriesMarker<UTCTimestamp>[] = [];
+
+  for (const signal of signalMarkers) {
+    const timestamp = Math.floor(Date.parse(signal.candleTimeUtc) / 1_000);
+    if (!Number.isFinite(timestamp) || !candleTimes.has(timestamp)) continue;
+
+    const marker = signalMarkerAppearance(signal);
+    if (!marker) continue;
+
+    const id = `${signal.signalId}:${signal.state}:${timestamp}`;
+    if (seenMarkers.has(id)) continue;
+    seenMarkers.add(id);
+    markers.push({
+      id,
+      time: timestamp as UTCTimestamp,
+      position: "belowBar",
+      ...marker,
+    });
+  }
+
+  return markers.sort((left, right) => Number(left.time) - Number(right.time));
+}
+
+function signalMarkerAppearance(
+  signal: LocalSignalChartMarker,
+): Pick<SeriesMarker<UTCTimestamp>, "color" | "shape" | "text"> | null {
+  switch (signal.state) {
+    case "Buy":
+      return { color: "#00d897", shape: "arrowUp", text: "BUY" };
+    case "Sell":
+      return { color: "#ff465d", shape: "arrowDown", text: "SELL" };
+    case "Stop":
+      return { color: "#e6b95e", shape: "circle", text: "STOP" };
+    default:
+      return null;
+  }
 }
 
 function addClosedSessionDisplayBars(

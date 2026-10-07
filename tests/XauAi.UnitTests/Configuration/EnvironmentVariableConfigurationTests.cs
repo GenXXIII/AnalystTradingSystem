@@ -38,6 +38,14 @@ public sealed class EnvironmentVariableConfigurationTests
             ["RSI_PERIOD"] = "12",
             ["BOLLINGER_STANDARD_DEVIATION"] = "2.5"
             ,
+            ["LOCAL_ANALYST_ENABLED"] = "true"
+            ,
+            ["LOCAL_ANALYST_TIMEFRAMES"] = "M5,H1"
+            ,
+            ["LOCAL_ANALYST_ENTRY_SCORE_THRESHOLD"] = "4.5"
+            ,
+            ["LOCAL_ANALYST_VALIDITY_CANDLES"] = "M5:9,H1:4"
+            ,
             ["NEWS_ENABLED"] = "true"
             ,
             ["NEWS_PROVIDER"] = "NewsData"
@@ -123,6 +131,10 @@ public sealed class EnvironmentVariableConfigurationTests
         Assert.Equal("8,21,55", configuration["TechnicalAnalysis:EmaPeriods"]);
         Assert.Equal("12", configuration["TechnicalAnalysis:RsiPeriod"]);
         Assert.Equal("2.5", configuration["TechnicalAnalysis:BollingerStandardDeviations"]);
+        Assert.Equal("true", configuration["LocalAnalyst:Enabled"]);
+        Assert.Equal("M5,H1", configuration["LocalAnalyst:Timeframes"]);
+        Assert.Equal("4.5", configuration["LocalAnalyst:EntryScoreThreshold"]);
+        Assert.Equal("M5:9,H1:4", configuration["LocalAnalyst:ValidityCandles"]);
         Assert.Equal("true", configuration["News:Enabled"]);
         Assert.Equal("NewsData", configuration["News:Provider"]);
         Assert.Equal("test-news-key", configuration["News:ApiKey"]);

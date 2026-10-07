@@ -108,6 +108,10 @@ public sealed class AiEvidenceSelectionTests
         {
             NumericValue = null,
             OriginalValue = null,
+            Unit = "Percent",
+            PreviousValue = 2.5m,
+            ExpectedValue = 2.7m,
+            ActualValue = 2.9m,
             MetadataJson = "{\"previous\":2.5,\"forecast\":null,\"actual\":null,\"revision\":null}",
             OriginalSourceUrl = "https://example.test/event"
         };
@@ -124,6 +128,11 @@ public sealed class AiEvidenceSelectionTests
         Assert.Equal("https://example.test/event", item.GetProperty("originalSourceUrl").GetString());
         Assert.Equal(JsonValueKind.Null, item.GetProperty("numericValue").ValueKind);
         Assert.Equal(JsonValueKind.Null, item.GetProperty("metadata").GetProperty("forecast").ValueKind);
+        var economicValues = item.GetProperty("economicValues");
+        Assert.Equal(2.5m, economicValues.GetProperty("previous").GetDecimal());
+        Assert.Equal(2.7m, economicValues.GetProperty("expected").GetDecimal());
+        Assert.Equal(2.9m, economicValues.GetProperty("actual").GetDecimal());
+        Assert.Equal("Percent", economicValues.GetProperty("unit").GetString());
     }
 
     private static AiEvidenceSelectionQuery Query(AiSpecialist specialist, string? timeframe) => new(

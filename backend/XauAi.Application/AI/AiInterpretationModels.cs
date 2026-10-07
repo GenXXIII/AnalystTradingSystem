@@ -136,7 +136,14 @@ public sealed record AiEvidenceCandidate(
     string? MetadataJson,
     DateTimeOffset UpdatedAtUtc,
     Guid? ClusterId,
-    IReadOnlyList<AiEvidenceRelation> Relations);
+    IReadOnlyList<AiEvidenceRelation> Relations)
+{
+    public decimal? PreviousValue { get; init; }
+
+    public decimal? ExpectedValue { get; init; }
+
+    public decimal? ActualValue { get; init; }
+}
 
 public sealed record SelectedAiEvidence(
     IReadOnlyList<AiEvidenceCandidate> Items,
@@ -235,6 +242,7 @@ public sealed record AiInterpretationWriteModel(
     string Provider,
     string Model,
     string PromptVersion,
+    string ConfigurationVersion,
     string EvidenceVersion,
     string CacheKey,
     string InputDigest,
@@ -257,6 +265,7 @@ public sealed record AiInterpretationFailureWriteModel(
     string Provider,
     string Model,
     string PromptVersion,
+    string ConfigurationVersion,
     string EvidenceVersion,
     string CacheKey,
     string InputDigest,
@@ -289,6 +298,7 @@ public sealed record AiInterpretationResult(
     string Provider,
     string Model,
     string PromptVersion,
+    string ConfigurationVersion,
     string EvidenceVersion,
     DateTimeOffset AnalysisTimeUtc,
     DateTimeOffset EvidenceUpdatedAtUtc,

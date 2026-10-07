@@ -98,6 +98,25 @@ public sealed class LayerDependencyTests
             "EfEvidenceStore.cs")));
     }
 
+    [Fact]
+    public void Local_analyst_has_no_ai_or_later_phase_dependency()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var localAnalysisRoot = Path.Combine(
+            repositoryRoot,
+            "backend",
+            "XauAi.Application",
+            "LocalAnalysis");
+        var source = Directory.EnumerateFiles(localAnalysisRoot, "*.cs", SearchOption.AllDirectories)
+            .Select(File.ReadAllText)
+            .ToArray();
+
+        Assert.NotEmpty(source);
+        Assert.DoesNotContain(source, value => value.Contains("XauAi.Application.AI", StringComparison.Ordinal));
+        Assert.DoesNotContain(source, value => value.Contains("TargetAnalyst", StringComparison.Ordinal));
+        Assert.DoesNotContain(source, value => value.Contains("Telegram", StringComparison.Ordinal));
+    }
+
     private static bool IsSolutionAssembly(AssemblyName reference) =>
         reference.Name?.StartsWith("XauAi.", StringComparison.Ordinal) == true;
 

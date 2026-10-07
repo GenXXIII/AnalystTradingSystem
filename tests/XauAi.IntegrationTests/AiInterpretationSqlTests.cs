@@ -64,6 +64,7 @@ public sealed class AiInterpretationSqlTests
                 var first = await store.SaveCompletedAsync(Write(
                     firstId, evidenceId, analysisTime, "cache-1", "evidence-v1"));
                 Assert.Equal(AiInterpretationLifecycle.Current, first.Lifecycle);
+                Assert.Equal(new string('c', 64), first.ConfigurationVersion);
                 Assert.Equal([evidenceId], first.EvidenceIds);
 
                 secondId = Guid.NewGuid();
@@ -79,6 +80,7 @@ public sealed class AiInterpretationSqlTests
                 var second = await store.GetAsync(secondId);
                 Assert.Equal(AiInterpretationLifecycle.Superseded, first?.Lifecycle);
                 Assert.Equal(AiInterpretationLifecycle.Current, second?.Lifecycle);
+                Assert.Equal(new string('c', 64), second?.ConfigurationVersion);
                 Assert.Equal([evidenceId], second?.EvidenceIds);
 
                 var evidence = await restarted.EvidenceRecords.SingleAsync(item => item.Id == evidenceId);
@@ -143,6 +145,7 @@ public sealed class AiInterpretationSqlTests
             "ProviderA",
             "model-a",
             "phase11-v1",
+            new string('c', 64),
             evidenceSeed.PadRight(64, '0'),
             cacheSeed.PadRight(64, '0'),
             "input".PadRight(64, '0'),

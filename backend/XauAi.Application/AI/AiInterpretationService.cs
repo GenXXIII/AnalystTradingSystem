@@ -78,6 +78,7 @@ internal sealed class AiInterpretationService(
             .Select(item => $"{item.Id:D}:{item.ContentHash}:{item.UpdatedAtUtc:O}")));
         var evidenceUpdatedAt = selectedForPrompt.Max(item => item.UpdatedAtUtc);
         var inputDigest = Hash(compressed.Json);
+        var configurationVersion = CreateConfigurationVersion(configuration, settings);
         var cacheAnalysisTime = request.AnalysisTimeUtc.HasValue
             ? analysisTime
             : FloorToWindow(analysisTime, TimeSpan.FromMinutes(settings.CurrentContextCacheMinutes));
@@ -90,6 +91,7 @@ internal sealed class AiInterpretationService(
             configuration.Provider,
             configuration.Adapter,
             configuration.Model,
+            configurationVersion,
             cacheAnalysisTime.ToString("O", CultureInfo.InvariantCulture),
             evidenceVersion,
             string.Join(',', compressed.EvidenceIds.Order())));
@@ -148,6 +150,7 @@ internal sealed class AiInterpretationService(
                     usedConfiguration.Provider,
                     usedConfiguration.Model,
                     settings.PromptVersion,
+                    configurationVersion,
                     evidenceVersion,
                     cacheKey,
                     inputDigest,
@@ -194,6 +197,7 @@ internal sealed class AiInterpretationService(
                     configuration.Provider,
                     configuration.Model,
                     settings.PromptVersion,
+                    configurationVersion,
                     evidenceVersion,
                     cacheKey,
                     inputDigest,
@@ -313,6 +317,31 @@ internal sealed class AiInterpretationService(
 
     private static string Hash(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+    private static string CreateConfigurationVersion(
+        AiSpecialistConfiguration configuration,
+        AiInterpretationSettings settings) =>
+        Hash(string.Join('|',
+            "phase11",
+            configuration.Specialist,
+            configuration.Enabled,
+            configuration.Provider.Trim(),
+            configuration.Adapter.Trim(),
+            configuration.RequiresApiKey,
+            configuration.Model.Trim(),
+            configuration.BaseUrl.Trim().TrimEnd('/'),
+            configuration.Temperature.ToString("R", CultureInfo.InvariantCulture),
+            configuration.TimeoutSeconds,
+            configuration.MaxOutputTokens,
+            configuration.MaxRetries,
+            configuration.RequestsPerMinute,
+            settings.PromptVersion,
+            settings.DefaultLookbackHours,
+            settings.MaximumLookbackHours,
+            settings.MaximumEvidenceItems,
+            settings.MaximumCompressedCharacters,
+            settings.CurrentContextCacheMinutes,
+            settings.MaximumPageSize));
 
     private static DateTimeOffset FloorToWindow(DateTimeOffset value, TimeSpan window)
     {

@@ -8,6 +8,8 @@ namespace XauAi.Infrastructure.Persistence.Configurations;
 
 internal sealed class StrategyConfiguration : IEntityTypeConfiguration<Strategy>
 {
+    private static readonly Guid LocalAnalystStrategyId = Guid.Parse("40000000-0000-0000-0000-000000000001");
+
     public void Configure(EntityTypeBuilder<Strategy> builder)
     {
         builder.ToTable("Strategies");
@@ -20,11 +22,24 @@ internal sealed class StrategyConfiguration : IEntityTypeConfiguration<Strategy>
         builder.Property(entity => entity.CreatedAtUtc).IsUtcTimestamp().HasDefaultValueSql("SYSUTCDATETIME()");
         builder.HasIndex(entity => entity.Key).IsUnique().HasDatabaseName("UX_Strategies_Key");
         builder.HasIndex(entity => entity.Category).HasDatabaseName("IX_Strategies_Category");
+
+        builder.HasData(new Strategy
+        {
+            Id = LocalAnalystStrategyId,
+            Key = "local-analyst-xauusd",
+            Name = "Local XAUUSD Analyst",
+            Category = "DeterministicSignal",
+            Description = "Phase 12 deterministic, AI-independent local analyst and signal engine.",
+            CreatedAtUtc = new DateTimeOffset(2026, 10, 7, 0, 0, 0, TimeSpan.Zero)
+        });
     }
 }
 
 internal sealed class StrategyVersionConfiguration : IEntityTypeConfiguration<StrategyVersion>
 {
+    private static readonly Guid LocalAnalystStrategyId = Guid.Parse("40000000-0000-0000-0000-000000000001");
+    private static readonly Guid LocalAnalystStrategyVersionId = Guid.Parse("41000000-0000-0000-0000-000000000001");
+
     public void Configure(EntityTypeBuilder<StrategyVersion> builder)
     {
         builder.ToTable("StrategyVersions", table =>
@@ -43,6 +58,18 @@ internal sealed class StrategyVersionConfiguration : IEntityTypeConfiguration<St
             .IsUnique()
             .HasDatabaseName("UX_StrategyVersions_Strategy_Version");
         builder.HasIndex(entity => entity.DefinitionHash).HasDatabaseName("IX_StrategyVersions_DefinitionHash");
+
+        builder.HasData(new StrategyVersion
+        {
+            Id = LocalAnalystStrategyVersionId,
+            StrategyId = LocalAnalystStrategyId,
+            Version = "phase12-v1",
+            DefinitionJson = "{\"engine\":\"local-analyst\",\"version\":\"phase12-v1\",\"symbol\":\"XAUUSD\",\"states\":[\"NOTHING\",\"BUY\",\"SELL\",\"STOP\"],\"usesAi\":false}",
+            DefinitionHash = "05aee2de1eedebe1cc22d748166ed8660012214084f332bad184fef69272d62b",
+            Status = "Active",
+            EffectiveFromUtc = new DateTimeOffset(2026, 10, 7, 0, 0, 0, TimeSpan.Zero),
+            CreatedAtUtc = new DateTimeOffset(2026, 10, 7, 0, 0, 0, TimeSpan.Zero)
+        });
     }
 }
 

@@ -6,8 +6,15 @@ import {
   getTechnicalAnalysis,
 } from "@/features/analysis/api/get-technical-analysis";
 import {
+  getCurrentLocalSignal,
+  getLocalSignalChartMarkers,
+  type LocalSignalChartMarker,
+  type LocalSignalSnapshot,
+} from "@/features/analysis/api/get-local-analyst";
+import {
   getLatestStoredCandles,
   getMarketPipelineStatus,
+  getMarketSourceComparison,
   synchronizeMarketData,
   type MarketTimeframeCode,
 } from "@/features/market/api/get-pipeline-data";
@@ -17,6 +24,7 @@ import type { MultiTimeframeAnalysis, TechnicalAnalysis } from "@/types/analysis
 import type {
   MarketDataPipelineResult,
   MarketDataPipelineStatus,
+  MarketDataSourceComparison,
   MarketProviderStatus,
   MarketQuote,
   StoredMarketCandle,
@@ -32,9 +40,13 @@ export function useMarketTerminal() {
   const [quote, setQuote] = useState<MarketQuote | null>(null);
   const [candles, setCandles] = useState<StoredMarketCandle[]>([]);
   const [pipeline, setPipeline] = useState<MarketDataPipelineStatus | null>(null);
+  const [sourceComparison, setSourceComparison] = useState<MarketDataSourceComparison | null>(null);
   const [lastSync, setLastSync] = useState<MarketDataPipelineResult | null>(null);
   const [analysis, setAnalysis] = useState<TechnicalAnalysis | null>(null);
   const [multiTimeframe, setMultiTimeframe] = useState<MultiTimeframeAnalysis | null>(null);
+  const [localSignal, setLocalSignal] = useState<LocalSignalSnapshot | null>(null);
+  const [signalMarkers, setSignalMarkers] = useState<LocalSignalChartMarker[]>([]);
+  const [localSignalError, setLocalSignalError] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -45,15 +57,34 @@ export function useMarketTerminal() {
 
   const load = useCallback(async (selectedTimeframe: MarketTimeframeCode, showLoading = true) => {
     const sequence = ++requestSequence.current;
-    if (showLoading) setState("loading");
+    if (showLoading) {
+      setState("loading");
+      setSourceComparison(null);
+      setLocalSignal(null);
+      setSignalMarkers([]);
+      setLocalSignalError(null);
+    }
 
-    const [providerResult, quoteResult, candlesResult, pipelineResult, analysisResult, multiTimeframeResult] = await Promise.allSettled([
+    const [
+      providerResult,
+      quoteResult,
+      candlesResult,
+      pipelineResult,
+      comparisonResult,
+      analysisResult,
+      multiTimeframeResult,
+      signalResult,
+      markerResult,
+    ] = await Promise.allSettled([
       getMarketProviderStatus(),
       getXauUsdQuote(),
       getLatestStoredCandles(selectedTimeframe),
       getMarketPipelineStatus(selectedTimeframe),
+      getMarketSourceComparison(selectedTimeframe),
       getTechnicalAnalysis(selectedTimeframe),
       getMultiTimeframeAnalysis(),
+      getCurrentLocalSignal(selectedTimeframe),
+      getLocalSignalChartMarkers(selectedTimeframe),
     ]);
 
     if (sequence !== requestSequence.current) return;
@@ -67,8 +98,16 @@ export function useMarketTerminal() {
       setCandles(applyLiveQuote(candlesResult.value, latestQuote.current));
     }
     if (pipelineResult.status === "fulfilled") setPipeline(pipelineResult.value);
+    if (comparisonResult.status === "fulfilled") setSourceComparison(comparisonResult.value);
     if (analysisResult.status === "fulfilled") setAnalysis(analysisResult.value);
     if (multiTimeframeResult.status === "fulfilled") setMultiTimeframe(multiTimeframeResult.value);
+    if (signalResult.status === "fulfilled") {
+      setLocalSignal(signalResult.value);
+      setLocalSignalError(null);
+    } else {
+      setLocalSignalError(toLocalAnalystError(signalResult.reason));
+    }
+    if (markerResult.status === "fulfilled") setSignalMarkers(markerResult.value);
 
     const analysisFailures = [analysisResult, multiTimeframeResult]
       .filter((result): result is PromiseRejectedResult => result.status === "rejected")
@@ -171,15 +210,25 @@ export function useMarketTerminal() {
     quote,
     candles,
     pipeline,
+    sourceComparison,
     lastSync,
     analysis,
     multiTimeframe,
+    localSignal,
+    signalMarkers,
+    localSignalError,
     analysisError,
     error,
     isSyncing,
     refresh,
     sync,
   };
+}
+
+function toLocalAnalystError(reason: unknown): string {
+  return reason instanceof ApiClientError
+    ? reason.message
+    : "The local analyst is currently unavailable.";
 }
 
 function toErrorMessage(reason: unknown): string {

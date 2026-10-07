@@ -6,6 +6,20 @@ export type XauUsdMarketSession = {
   season: "summer" | "winter";
 };
 
+export type TradingSessionName = "Sydney" | "Tokyo" | "London" | "New York";
+
+const tradingSessions: ReadonlyArray<{
+  name: TradingSessionName;
+  timeZone: string;
+  opensAtHour: number;
+  closesAtHour: number;
+}> = [
+  { name: "Sydney", timeZone: "Australia/Sydney", opensAtHour: 8, closesAtHour: 17 },
+  { name: "Tokyo", timeZone: "Asia/Tokyo", opensAtHour: 9, closesAtHour: 18 },
+  { name: "London", timeZone: "Europe/London", opensAtHour: 8, closesAtHour: 17 },
+  { name: "New York", timeZone: "America/New_York", opensAtHour: 8, closesAtHour: 17 },
+];
+
 const transitionFormatter = new Intl.DateTimeFormat("en-GB", {
   weekday: "short",
   hour: "2-digit",
@@ -74,6 +88,12 @@ export function formatSessionCountdown(now: Date, transition: Date) {
   return `${minutes}m`;
 }
 
+export function getActiveTradingSessions(now: Date): TradingSessionName[] {
+  return tradingSessions
+    .filter((session) => isSessionOpen(now, session.timeZone, session.opensAtHour, session.closesAtHour))
+    .map((session) => session.name);
+}
+
 function atUtcTime(reference: Date, dayOffset: number, minutes: number) {
   return new Date(Date.UTC(
     reference.getUTCFullYear(),
@@ -82,6 +102,22 @@ function atUtcTime(reference: Date, dayOffset: number, minutes: number) {
     Math.floor(minutes / 60),
     minutes % 60,
   ));
+}
+
+function isSessionOpen(now: Date, timeZone: string, opensAtHour: number, closesAtHour: number) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    hour: "2-digit",
+    hourCycle: "h23",
+    timeZone,
+  }).formatToParts(now);
+  const weekday = parts.find((part) => part.type === "weekday")?.value;
+  const hour = Number(parts.find((part) => part.type === "hour")?.value);
+  return weekday !== "Sat"
+    && weekday !== "Sun"
+    && Number.isFinite(hour)
+    && hour >= opensAtHour
+    && hour < closesAtHour;
 }
 
 function isUsDaylightSavingSeason(now: Date) {

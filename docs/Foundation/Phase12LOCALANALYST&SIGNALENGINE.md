@@ -1,574 +1,837 @@
-# PHASE 12 — LOCAL ANALYST & SIGNAL ENGINE
+============================================================
+PHASE 12 — LOCAL ANALYST & SIGNAL ENGINE
+============================================================
 
-## OBJECTIVE
+Project: AnalystTradingSystem
+Phase: 12
 
-Build the fully local, deterministic market-analysis engine that continuously observes XAUUSD market data and produces fast local signals without using AI.
+IMPORTANT ARCHITECTURE RULE
+------------------------------------------------------------
 
-The Local Analyst must be independent from both:
+This phase implements the LOCAL ANALYST.
 
-* 🎯 Target Analyst
-* 🔮 Full Analyst
+The Local Analyst is:
 
-It must never consume their conclusions as input.
+- deterministic
+- rule-based
+- continuously running
+- AI-free
+- explainable
+- configurable
+- independent from AI conclusions
 
----
+The Local Analyst must NOT depend on:
 
-## CORE FLOW
+- Target Analyst
+- Full Analyst
+- Future / Expected Path
+- AI workspace conclusions
+- Telegram Scanner signals
+- automatic trade execution
 
-AllTick + Twelve Data
-↓
-Data Normalizer
-↓
-Candle Builder
-↓
-Multi-Timeframe Market Data
-↓
-Local Evidence Engine
-↓
+The Local Analyst may consume the project's normalized market
+data and technical evidence infrastructure, but its decision
+must be calculated independently.
+
+
+============================================================
+1. OBJECTIVE
+============================================================
+
+Build a deterministic XAUUSD Local Analyst that continuously
+analyzes market data and produces local technical setups.
+
+Possible states:
+
+NOTHING
+🟢 BUY
+🔴 SELL
+🟡 STOP
+
+The Local Analyst must not force a signal.
+
+If conditions are insufficient:
+
+→ NOTHING
+
+If an existing setup becomes invalid:
+
+→ 🟡 STOP
+
+
+============================================================
+2. CORE FLOW
+============================================================
+
+XAUUSD Market Data
+        ↓
+Data Validation
+        ↓
+Multi-Timeframe Candles
+        ↓
 Technical Calculations
-↓
-Local Signal Rules
-↓
-Signal Validator
-↓
-🟢 BUY / 🔴 SELL / 🟡 STOP / NOTHING
+        ↓
+Market Structure
+        ↓
+Liquidity
+        ↓
+Candle Analysis
+        ↓
+Momentum / Flow
+        ↓
+KTR / Important Levels
+        ↓
+Volatility
+        ↓
+Rule Evaluation
+        ↓
+Score / Confirmation
+        ↓
+Local Signal
+        ↓
+Lifecycle Monitoring
 
----
 
-## DATA TIMEFRAMES
+============================================================
+3. SUPPORTED TIMEFRAMES
+============================================================
 
-Support:
+The Local Analyst must support:
 
-* 1M
-* 5M
-* 15M
-* 30M
-* 1H
-* 4H
-* 1D
+1M
+5M
+15M
+30M
+1H
+4H
+1D
 
-The Local Analyst must be able to use higher timeframes for context while maintaining fast lower-timeframe signal detection.
+The implementation must be configurable so that individual
+timeframes can be enabled or disabled.
 
-Primary short-term signal timeframes should support:
-
-* 5M
-* 15M
-* 30M
-
----
-
-## LOCAL ANALYSIS COMPONENTS
-
-Build deterministic local calculations for:
-
-### Market Structure
-
-* Higher High
-* Higher Low
-* Lower High
-* Lower Low
-* Trend
-* Range
-* Transition
-* Breakout
-* Breakdown
-* Structure break
-* Failed breakout
-
-### Liquidity
-
-* Previous highs/lows
-* Equal highs
-* Equal lows
-* Liquidity zones
-* Liquidity sweeps
-* Rejection after sweep
-* Break-and-retest areas
-
-### Candle Analysis
-
-Detect configurable candle conditions such as:
-
-* Strong bullish candle
-* Strong bearish candle
-* Rejection
-* Engulfing
-* Expansion
-* Compression
-* Breakout candle
-* Failed breakout
-* Momentum weakening
-* Indecision
-
-Do not treat one candle pattern as a guaranteed signal.
-
-### Momentum / Flow
-
-Calculate local market behavior such as:
-
-* Momentum
-* Expansion
-* Compression
-* Directional strength
-* Acceleration
-* Deceleration
-* Possible exhaustion
-* Continuation behavior
-* Reversal behavior
-
-### KTR / Important Levels
-
-Calculate and track:
-
-* Key Trading Ranges
-* Important price levels
-* Session highs/lows
-* Previous day levels
-* Previous session levels
-* Relevant support/resistance
-* Range boundaries
-
-### Volatility
-
-Support:
-
-* ATR
-* Candle range
-* Average movement
-* Volatility expansion
-* Volatility contraction
-
----
-
-## LOCAL SIGNAL ENGINE
-
-The Local Signal Engine must combine deterministic evidence.
+The system must understand relationships between timeframes.
 
 Example:
 
-Structure
-+
-Liquidity
-+
-Candle
-+
-Flow
-+
-KTR
-+
-Momentum
-+
-Volatility
-↓
-Signal Score
-↓
-Signal Validation
-↓
-Signal State
+1D → macro structure
+4H → major structure
+1H → intermediate structure
+15M → setup context
+5M → local confirmation
+1M → micro behavior
 
-The scoring system must be configurable.
 
-Do not hard-code a single BUY/SELL formula that cannot be adjusted.
+============================================================
+4. DETERMINISTIC ONLY
+============================================================
 
----
+No AI calls are allowed for Local Analyst decisions.
 
-## SIGNAL STATES
+Do not call:
+
+- OpenAI
+- Target AI
+- Full Analyst AI
+- Master AI
+- external LLM
+- AI-generated signal
+
+The same market-data snapshot and same configuration must
+produce the same result.
+
+Example:
+
+Same candles
++
+Same configuration
+=
+Same signal
+
+
+============================================================
+5. MARKET STRUCTURE
+============================================================
+
+Implement deterministic structure detection.
+
+Support:
+
+- swing highs
+- swing lows
+- HH
+- HL
+- LH
+- LL
+- Break of Structure
+- Change of Character
+- trend
+- range
+- transition
+- structural invalidation
+
+Structure detection must use configurable parameters.
+
+Do not hardcode arbitrary thresholds throughout the code.
+
+
+============================================================
+6. TECHNICAL INDICATORS
+============================================================
+
+Support at minimum:
+
+- EMA 20
+- EMA 50
+- EMA 200
+- RSI
+- ATR
+
+Indicator periods and thresholds must be configurable.
+
+Indicators must be calculated locally from validated candle
+data.
+
+Do not request an AI interpretation for indicator values.
+
+
+============================================================
+7. LIQUIDITY
+============================================================
+
+Detect deterministic liquidity-related structures such as:
+
+- equal highs
+- equal lows
+- previous swing highs
+- previous swing lows
+- session highs/lows where available
+- liquidity sweep
+- rejection after sweep
+
+Liquidity detection must be based on explicit rules.
+
+Do not claim actual order-book liquidity when order-book data
+is unavailable.
+
+
+============================================================
+8. SUPPORT / RESISTANCE
+============================================================
+
+Detect relevant levels using deterministic methods such as:
+
+- swing highs
+- swing lows
+- previous highs/lows
+- repeated reaction levels
+- breakout/retest levels
+- configured session levels
+- important KTR levels
+
+Levels should have:
+
+- price
+- source
+- timeframe
+- strength
+- created time
+- status
+
+Avoid creating excessive duplicate levels.
+
+
+============================================================
+9. CANDLE ANALYSIS
+============================================================
+
+Implement deterministic candle classification.
+
+Possible patterns:
+
+- bullish rejection
+- bearish rejection
+- bullish engulfing
+- bearish engulfing
+- momentum candle
+- indecision
+- breakout candle
+- failed breakout
+- continuation candle
+
+Patterns must be evaluated in context.
+
+Do not treat a single candle pattern as sufficient for a
+signal by itself.
+
+
+============================================================
+10. MOMENTUM / FLOW
+============================================================
+
+Calculate deterministic momentum information using available
+market data.
+
+Consider:
+
+- price momentum
+- candle momentum
+- directional movement
+- acceleration
+- deceleration
+- ATR expansion/contraction
+- volume/tick-volume when available
+
+Never fabricate unavailable order-flow information.
+
+
+============================================================
+11. KTR / IMPORTANT LEVELS
+============================================================
+
+Integrate the project's existing KTR and important-level
+calculations.
+
+The Local Analyst may use:
+
+- KTR
+- previous session levels
+- previous highs/lows
+- important price levels
+- volatility-adjusted levels
+
+All calculations must use the project's established
+definitions.
+
+
+============================================================
+12. SIGNAL SCORING
+============================================================
+
+Implement configurable deterministic scoring.
+
+Example LONG conditions:
+
+1. Price > EMA200
+2. EMA20 > EMA50
+3. Bullish market structure
+4. RSI confirmation
+5. Support / resistance retest
+6. Bullish candle / momentum confirmation
+
+Example SHORT conditions:
+
+1. Price < EMA200
+2. EMA20 < EMA50
+3. Bearish market structure
+4. RSI confirmation
+5. Resistance / support retest
+6. Bearish candle / momentum confirmation
+
+Each condition contributes to a configurable score.
+
+Example:
+
+5 / 6 conditions
+→ potential valid setup
+
+The exact threshold must be configurable.
+
+Do not hardcode 5/6 as an immutable rule.
+
+
+============================================================
+13. CONFIRMATION
+============================================================
+
+A signal should require appropriate confirmation.
+
+Possible confirmation methods:
+
+- candle close
+- breakout of confirmation candle
+- retest
+- structure confirmation
+- momentum confirmation
+
+Do not trigger signals from incomplete candles unless the
+configuration explicitly allows it.
+
+Prefer confirmed candle-close conditions to reduce false
+signals.
+
+
+============================================================
+14. SIGNAL STATES
+============================================================
 
 Supported states:
 
-### NOTHING
+NOTHING
+🟢 BUY
+🔴 SELL
+🟡 STOP
 
-No valid local setup exists.
+Meaning:
 
-Do not render a chart object.
+NOTHING
+→ no active valid setup.
 
-### 🟢 BUY
+🟢 BUY
+→ active bullish local setup.
 
-A valid local bullish setup exists.
+🔴 SELL
+→ active bearish local setup.
 
-### 🔴 SELL
+🟡 STOP
+→ an existing local setup has ended or become invalid.
 
-A valid local bearish setup exists.
 
-### 🟡 STOP
+============================================================
+15. SIGNAL OBJECT
+============================================================
 
-The previously detected local setup is no longer valid and the local engine must stop displaying it.
+Create a structured LocalSignal model.
 
-STOP is a local-state concept only.
+Suggested fields:
 
-It is NOT:
+LocalSignal
+├── Id
+├── Symbol
+├── Timeframe
+├── SignalCandleId
+├── SignalCandleTime
+├── Direction
+├── SignalPrice
+├── Score
+├── MaxScore
+├── Confidence
+├── StructureState
+├── LiquidityState
+├── CandleState
+├── MomentumState
+├── KtrState
+├── VolatilityState
+├── InvalidationReason
+├── ValidUntil
+├── Status
+├── CreatedAt
+├── UpdatedAt
+└── EndedAt
 
-* WAIT
-* AI decision
-* Full Analyst result
-* Target result
+Do not treat database IDs as market signal identifiers.
 
----
 
-## CHART SIGNAL OBJECTS
+============================================================
+16. SIGNAL CANDLE AND LIFECYCLE
+============================================================
 
-The Local Analyst should not place an object under every candle.
+A signal belongs to the relevant setup/origin candle.
 
-Only render an object when a valid local signal is detected.
+Do NOT create a new independent signal object for every
+subsequent candle.
 
 Example:
 
-```text
-Candle 1   Candle 2   Candle 3   Candle 4   Candle 5
-   │          │          │          │          │
-   │          │       🟢 BUY       │          │
-   │          │          │          │          │
-```
+🟢 BUY
+───────────────
+          │
+          │ monitoring
+          │
+          ▼
+      🟡 STOP
 
-The signal object must be attached to the relevant signal candle.
+The BUY setup remains active while its conditions remain valid.
 
-Do not clutter the chart with objects for candles that have no valid signal.
+New candles update the existing setup rather than creating
+duplicate BUY signals.
 
----
 
-## SIGNAL LIFECYCLE
+============================================================
+17. SIGNAL LIFECYCLE
+============================================================
 
-```text
+Lifecycle:
+
 NO SIGNAL
-   ↓
-SIGNAL DETECTED
-   ↓
+    ↓
+SETUP DETECTED
+    ↓
 🟢 BUY / 🔴 SELL
-   ↓
-MONITOR
-   ↓
-┌─────────────┬─────────────┬─────────────┐
-↓             ↓             ↓
-VALID         INVALID       TIME EXPIRED
-↓             ↓             ↓
-CONTINUE      🟡 STOP       🟡 STOP
-```
+    ↓
+ACTIVE
+    ↓
+Monitor conditions
+    ↓
+┌──────────────┬──────────────┬──────────────┐
+│              │              │
+▼              ▼              ▼
+TP/Target    Invalidated   Time Expired
+│              │              │
+└──────────────┴──────────────┘
+               ↓
+            🟡 STOP
+               ↓
+        Historical Record
 
-A local signal must not remain active forever.
 
----
+============================================================
+18. INVALIDATION
+============================================================
 
-## LOCAL SIGNAL EXPIRATION
-
-Every local signal must have a configurable validity period.
+Invalidation must be based on actual setup conditions.
 
 Examples:
 
-* 5M signal → short validity
-* 15M signal → short/medium validity
-* 30M signal → longer validity
+- structural invalidation
+- price breaks invalidation level
+- opposite structure confirmation
+- setup conditions disappear
+- configured validity expires
+- abnormal data condition
 
-The exact duration must be configurable by timeframe and strategy.
+Do not use random fixed invalidation rules.
 
-When the validity period expires:
+Every STOP should have a reason.
 
-```text
-Active Signal
-↓
-Time Expired
-↓
-🟡 STOP
-```
 
----
+============================================================
+19. VALIDITY
+============================================================
 
-## PRICE INVALIDATION
-
-A BUY signal must be invalidated when the market violates its defined bullish conditions.
-
-A SELL signal must be invalidated when the market violates its defined bearish conditions.
-
-The invalidation logic must be based on the actual setup conditions rather than an arbitrary fixed number.
-
----
-
-## SIGNAL CONFIRMATION
-
-Avoid creating a signal from one weak condition.
-
-The engine should support configurable confirmation requirements such as:
-
-* Minimum evidence score
-* Structure alignment
-* Liquidity condition
-* Candle confirmation
-* Flow confirmation
-* Volatility condition
-
-If evidence is insufficient:
-
-```text
-NO SIGNAL
-```
-
-Do not force BUY or SELL.
-
----
-
-## REAL-TIME PROCESSING
-
-The Local Analyst must react to newly available market/candle data efficiently.
-
-Do not recalculate unnecessary historical information on every update.
-
-Use:
-
-* Incremental calculations
-* Cached indicators
-* Cached structure
-* Cached liquidity
-* Previous signal state
-* Only-new-candle processing where possible
-
----
-
-## LOCAL ANALYST INDEPENDENCE
-
-The Local Analyst MUST NOT:
-
-* Call Target Analyst
-* Call Full Analyst
-* Read Target conclusions
-* Read Full conclusions
-* Use AI
-* Inherit AI BUY/SELL decisions
-* Change its signal because Full Analyst disagrees
-* Change its signal because Target Analyst disagrees
+Signal validity must be configurable by timeframe.
 
 Example:
 
-```text
-LOCAL  → BUY
-TARGET → 4,190 target
-FULL   → WAIT
-```
+1M → short validity
+5M → short validity
+15M → medium validity
+1H → longer validity
+
+Do not hardcode a universal expiration time for every
+timeframe.
+
+Store:
+
+ValidUntil
+
+and evaluate it deterministically.
+
+
+============================================================
+20. ACTIVE VS HISTORY
+============================================================
+
+Active signals should be visible in the active-analysis
+state.
+
+When a signal ends:
+
+- remove it from active signal state
+- preserve its historical record
+- preserve lifecycle events
+- preserve reason for termination
+
+Do not delete completed signal history merely because it is
+no longer active.
+
+
+============================================================
+21. LOCAL ANALYST UI DATA
+============================================================
+
+The Local Analyst should expose structured information for
+the UI.
+
+Example:
+
+┌──────────────────────────────────────┐
+│ LOCAL ANALYST            XAUUSD · 5M │
+│                                      │
+│ 🟢 BUY                               │
+│ Score: 5 / 6                         │
+│                                      │
+│ Structure: Bullish                   │
+│ Liquidity: Support retest            │
+│ Momentum: Bullish                     │
+│ Candle: Confirmation                 │
+│                                      │
+│ Signal: 4,xxx.xx                     │
+│ Valid Until: ...                     │
+└──────────────────────────────────────┘
+
+When invalidated:
+
+┌──────────────────────────────────────┐
+│ LOCAL ANALYST            XAUUSD · 5M │
+│                                      │
+│ 🟡 STOP                              │
+│                                      │
+│ Reason: Structural invalidation      │
+└──────────────────────────────────────┘
+
+The exact UI belongs to the frontend implementation.
+
+
+============================================================
+22. INDEPENDENCE FROM TARGET ANALYST
+============================================================
+
+Target Analyst may produce:
+
+🎯 Target
+
+Local Analyst must NOT use that target.
+
+Example:
+
+Local:
+🟢 BUY
+
+Target:
+🎯 4,190
+
+The Local BUY was calculated without knowing the Target result.
+
+
+============================================================
+23. INDEPENDENCE FROM FULL ANALYST
+============================================================
+
+Full Analyst may produce:
+
+🔴 SELL
+
+Local Analyst may simultaneously produce:
+
+🟢 BUY
 
 This is valid.
 
-Each system remains independent.
+Do not override Local Analyst because Full Analyst disagrees.
 
----
+Do not feed Full Analyst conclusions into Local Analyst.
 
-## SIGNAL DATA MODEL
 
-Create a structured LocalSignal model containing at minimum:
+============================================================
+24. INDEPENDENCE FROM TELEGRAM SCANNER
+============================================================
 
-* Id
-* Symbol
-* Timeframe
-* SignalType
-* SignalCandleTime
-* SignalPrice
-* CurrentPrice
-* Direction
-* Score
-* Confidence
-* StructureState
-* LiquidityState
-* CandleState
-* FlowState
-* KTRState
-* VolatilityState
-* InvalidationPrice
-* ValidUntil
-* Status
-* CreatedAt
-* UpdatedAt
-* InvalidatedAt
-* ExpiredAt
+The 24/7 Telegram Scanner is a separate project.
 
-Do not use database IDs as chart/public signal identifiers.
+It must NOT provide signals to Local Analyst.
 
----
+Local Analyst must NOT provide signals to Telegram Scanner.
 
-## CHART OBJECT DATA
+They may use compatible market-data concepts, but their
+decision engines remain independent.
 
-The chart object should contain enough information to render:
+Example:
 
-* Signal type
-* Signal candle
-* Price
-* Time
-* Timeframe
-* Status
-* Invalidation
-* Valid-until information
-
-The chart layer must not contain analysis logic.
-
----
-
-## UI REQUIREMENTS
-
-The Local Analyst should remain lightweight.
-
-The chart should show:
-
-```text
+Local:
 🟢 BUY
-```
 
-or
-
-```text
+Telegram:
 🔴 SELL
-```
 
-under the relevant candle.
+This must be allowed.
 
-When invalidated or expired:
 
-```text
-🟡 STOP
-```
-
-The UI must not create unnecessary visual clutter.
-
----
-
-## LOCAL SIGNAL HISTORY
-
-Store historical local signals for:
-
-* Backtesting
-* Accuracy measurement
-* Debugging
-* Performance analysis
-* Strategy improvement
-
-Do not delete historical signals when they expire.
-
-Only remove the active chart representation when the lifecycle requires it.
-
----
-
-## PERFORMANCE REQUIREMENTS
-
-The Local Analyst must be designed for continuous operation.
-
-Avoid:
-
-* AI calls
-* Heavy database queries on every tick
-* Rebuilding all timeframes unnecessarily
-* Recalculating unchanged indicators
-* Reprocessing unchanged candles
-
-Use cached/incremental processing where possible.
-
----
-
-## ERROR HANDLING
+============================================================
+25. DATA QUALITY
+============================================================
 
 Handle:
 
-* Missing candles
-* Duplicate candles
-* Out-of-order candles
-* Provider gaps
-* Invalid prices
-* Invalid timestamps
-* Timeframe synchronization problems
-* Data-source disagreement
+- missing candles
+- duplicate candles
+- out-of-order candles
+- stale data
+- incomplete candles
+- provider interruptions
+- invalid OHLC values
+- timeframe gaps
 
-If market data is unreliable:
+Never generate a signal from invalid market data.
 
-```text
-NO SIGNAL
-```
+If required data is unavailable:
 
-Do not generate a false signal from corrupted data.
+→ NOTHING
 
----
+and record the data-quality reason.
 
-## TESTING
 
-Test:
+============================================================
+26. INCREMENTAL PROCESSING
+============================================================
 
-1. BUY detection
-2. SELL detection
-3. No-signal conditions
-4. Signal invalidation
-5. Signal expiration
-6. STOP state
-7. Candle attachment
-8. Multi-timeframe calculations
-9. Duplicate data
-10. Missing data
-11. Out-of-order data
-12. Provider switching
-13. Real-time updates
-14. Historical replay
-15. Signal persistence
-16. Chart-object lifecycle
-17. Performance under continuous updates
+Do not recalculate the entire historical dataset every time a
+new candle arrives.
 
----
+Use:
 
-## PHASE 12 BOUNDARY
+- incremental calculations
+- cached indicators
+- cached structure
+- cached levels
+- changed-candle detection
+- stateful signal monitoring
 
-Phase 12 produces:
+Only recompute what is necessary.
 
-```text
-🟢 BUY
-🔴 SELL
-🟡 STOP
-NOTHING
-```
 
-Phase 12 does NOT produce:
+============================================================
+27. CONFIGURATION
+============================================================
 
-* 🎯 Target Analyst results
-* 🔮 Full Analyst results
-* AI analysis
-* BUY/SELL decisions from AI
-* Future scenarios
-* Trade execution
+Signal parameters must be configurable.
 
-The Local Analyst is the independent, fast, deterministic signal layer.
+Examples:
 
----
+- EMA periods
+- RSI period
+- RSI thresholds
+- ATR period
+- swing detection
+- structure thresholds
+- scoring weights
+- minimum score
+- confirmation rules
+- validity duration
+- invalidation buffers
+- volatility filters
 
-## DELIVERABLES
+Avoid scattering constants throughout the code.
 
-1. Local Analysis Engine
-2. Multi-timeframe local analysis
-3. Structure analyzer
-4. Liquidity analyzer
-5. Candle analyzer
-6. Flow/momentum analyzer
-7. KTR analyzer
-8. Volatility analyzer
-9. Local signal scoring
-10. Signal validator
-11. Signal lifecycle manager
-12. Signal expiration
-13. Signal invalidation
-14. STOP state
-15. Chart signal-object integration
-16. Local signal persistence
-17. Incremental processing
-18. Local signal history
-19. Comprehensive tests
-20. Performance optimization
+Centralize configuration.
 
----
 
-## COMPLETION CRITERIA
+============================================================
+28. EXPLAINABILITY
+============================================================
+
+Every signal must be explainable.
+
+Store the conditions that caused the signal.
+
+Example:
+
+BUY because:
+
+✓ Price > EMA200
+✓ EMA20 > EMA50
+✓ Bullish HH/HL structure
+✓ Support retest
+✓ Bullish confirmation candle
+
+Score:
+
+5 / 6
+
+The explanation must come from actual deterministic
+conditions, not generated AI text.
+
+
+============================================================
+29. TESTING
+============================================================
+
+Test at minimum:
+
+- indicator calculations
+- EMA
+- RSI
+- ATR
+- swing detection
+- HH/HL/LH/LL
+- BOS
+- CHoCH
+- liquidity detection
+- support/resistance
+- candle detection
+- scoring
+- BUY conditions
+- SELL conditions
+- confirmation
+- invalidation
+- STOP
+- expiration
+- signal lifecycle
+- duplicate prevention
+- missing data
+- out-of-order data
+- incomplete candles
+- multi-timeframe relationships
+- incremental processing
+
+Use deterministic test datasets.
+
+The same input must produce the same result.
+
+
+============================================================
+30. PERFORMANCE
+============================================================
+
+The Local Analyst is intended for continuous monitoring.
+
+Optimize for:
+
+- low CPU usage
+- low memory usage
+- incremental processing
+- minimal recalculation
+- fast signal evaluation
+- stable long-running operation
+
+Do not introduce AI calls or unnecessary external API calls
+into the Local Analyst.
+
+
+============================================================
+31. COMPLETION CRITERIA
+============================================================
 
 Phase 12 is complete when:
 
-* Local analysis runs without AI.
-* Local analysis runs independently from Target and Full.
-* Multi-timeframe data is available.
-* Valid BUY/SELL setups can be detected.
-* Weak conditions produce no signal.
-* Signals are attached to the correct candle.
-* The chart does not display an object under every candle.
-* Invalid signals become 🟡 STOP.
-* Expired signals become 🟡 STOP.
-* Signals cannot run forever.
-* Historical signals remain available for testing.
-* The engine handles missing/invalid market data safely.
-* Real-time processing is efficient.
-* Target and Full Analyst conclusions cannot influence Local signals.
+1. Local Analyst runs without AI.
+2. XAUUSD multi-timeframe data is consumed correctly.
+3. Indicators are calculated deterministically.
+4. Market structure is detected.
+5. Liquidity is detected.
+6. Support/resistance is detected.
+7. Candle conditions are detected.
+8. Momentum/flow conditions are calculated.
+9. KTR/important levels are integrated.
+10. Configurable scoring works.
+11. BUY signals work.
+12. SELL signals work.
+13. NOTHING state works.
+14. STOP state works.
+15. Signal lifecycle works.
+16. Signal history is preserved.
+17. Duplicate signals are prevented.
+18. Data-quality failures are handled.
+19. Incremental processing works.
+20. Tests pass.
+21. Performance is acceptable for continuous monitoring.
+22. Local Analyst remains completely independent from
+    Target Analyst, Full Analyst, Future, and Telegram Scanner.
+
+
+============================================================
+32. NEXT PHASE
+============================================================
+
+After Phase 12 is fully implemented and tested:
+
+→ Phase 13 — Target Analyst & AI Workspaces
+
+Target Analyst will be a separate AI-driven predictive
+target system.
+
+It must not change the Local Analyst's decisions.
+
+
+============================================================
+END OF PHASE 12
+============================================================

@@ -85,6 +85,10 @@ public sealed class XauAiDbContext(DbContextOptions<XauAiDbContext> options) : D
 
     public DbSet<TradingSignal> TradingSignals => Set<TradingSignal>();
 
+    public DbSet<TradingSignalLifecycleEvent> TradingSignalLifecycleEvents => Set<TradingSignalLifecycleEvent>();
+
+    public DbSet<LocalAnalystProcessingState> LocalAnalystProcessingStates => Set<LocalAnalystProcessingState>();
+
     public DbSet<TradingSignalEvidence> TradingSignalEvidence => Set<TradingSignalEvidence>();
 
     public DbSet<SignalOutcome> SignalOutcomes => Set<SignalOutcome>();

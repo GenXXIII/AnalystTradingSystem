@@ -5,7 +5,8 @@ import { marketTimeframes, type MarketTimeframeCode } from "@/features/market/ap
 import { useMarketTerminal } from "@/hooks/use-market-terminal";
 import { useNewsModule } from "@/hooks/use-news-module";
 import { TradingChart } from "@/components/trading-chart";
-import { getXauUsdMarketSession } from "@/lib/market/xauusd-session";
+import type { LocalSignalSnapshot, LocalSignalState } from "@/features/analysis/api/get-local-analyst";
+import { getActiveTradingSessions, getXauUsdMarketSession } from "@/lib/market/xauusd-session";
 import type { MultiTimeframeAnalysis, TechnicalAnalysis } from "@/types/analysis";
 import type { StoredMarketCandle } from "@/types/market";
 import type { NewsSystemStatus, PagedNewsArticles } from "@/types/news";
@@ -22,10 +23,6 @@ const utcTime = new Intl.DateTimeFormat("en-GB", {
 const utcPlusSevenTime = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "Asia/Bangkok",
 });
-const utcShortDate = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit", month: "short", timeZone: "UTC",
-});
-const MILLISECONDS_PER_DAY = 86_400_000;
 const timeframeLabels: Record<MarketTimeframeCode, string> = {
   M1: "M1", M5: "M5", M15: "M15", M30: "M30", H1: "1H", H4: "4H", D1: "1D",
 };
@@ -69,9 +66,11 @@ export function MarketTerminal() {
   const spread = terminal.quote ? terminal.quote.ask - terminal.quote.bid : null;
   const completedVisible = terminal.candles.filter((item) => item.isComplete).length;
   const providerName = terminal.provider?.provider ?? "AllTick";
+  const twelveDataReady = terminal.sourceComparison?.referenceEnabled === true
+    && terminal.sourceComparison.matchedCandles > 0;
   const systemState = terminal.provider?.connected ? "Operational" : terminal.state === "loading" ? "Checking" : "Attention";
   const marketSession = now ? getXauUsdMarketSession(now) : null;
-  const weeklyRangeLabel = now ? formatWeeklyRange(now) : "7D view";
+  const activeTradingSessions = now ? getActiveTradingSessions(now) : [];
   const changeTimeframe = (timeframe: MarketTimeframeCode) => {
     setSelected(null);
     terminal.setTimeframe(timeframe);
@@ -104,7 +103,6 @@ export function MarketTerminal() {
           <section className="center-stack">
             <article className="terminal-panel chart-panel">
               <PanelHeader eyebrow="Price evidence" title="Market chart">
-                <span className={`state-chip ${terminal.provider?.connected ? "complete" : "negative"}`}>{terminal.provider?.connected ? `${providerName} live` : `${providerName} waiting`}</span>
                 <span className={`state-chip ${marketSession === null ? "neutral" : marketSession.isOpen ? "complete" : "negative"}`}>{marketSession === null ? "Market checking" : `Market ${marketSession.isOpen ? "open" : "closed"} · ${marketSession.nextTransitionLocalLabel}`}</span>
               </PanelHeader>
               <div className="chart-toolbar">
@@ -115,8 +113,12 @@ export function MarketTerminal() {
                     </button>
                   ))}
                 </div>
-                <span className="chart-context">XAUUSD</span><span className="chart-context">UTC</span><span className="chart-context" title="Seven-day history loaded; chart opens in recent focus">{weeklyRangeLabel}</span>
-                <span className="chart-source">SQL history | AllTick live forming candle</span>
+                <span className="chart-context">XAUUSD</span>
+                <span className="chart-context">UTC</span>
+                <span className={`chart-provider ${terminal.provider?.connected ? "connected" : "waiting"}`}><StatusDot online={Boolean(terminal.provider?.connected)} />{providerName} {terminal.provider?.connected ? "connected" : "waiting"}</span>
+                <span className={`chart-provider ${twelveDataReady ? "connected" : "waiting"}`}><StatusDot online={twelveDataReady} />Twelve Data {twelveDataReady ? "ready" : "waiting"}</span>
+                <span className="chart-session">{activeTradingSessions.length > 0 ? activeTradingSessions.join(" · ") : "Between sessions"}</span>
+                <span className="chart-source">SQL history · live forming candle</span>
               </div>
               <TradingChart
                 candles={terminal.candles}
@@ -125,28 +127,18 @@ export function MarketTerminal() {
                 timeframe={terminal.timeframe}
                 nowUtcMilliseconds={now?.getTime() ?? null}
                 marketSession={marketSession}
+                signalMarkers={terminal.signalMarkers}
               />
             </article>
           </section>
 
           <aside className="right-stack">
-            <article className="terminal-panel quality-panel">
-              <PanelHeader eyebrow="Provider and storage" title="Data quality" />
-              <div className="connection-row">
-                <StatusDot online={Boolean(terminal.provider?.connected)} />
-                <div><strong>{terminal.provider?.connected ? `${providerName} connected` : `${providerName} waiting`}</strong><small>{terminal.provider?.message ?? "Checking provider connection…"}</small></div>
-              </div>
-              <dl className="terminal-details">
-                <Detail label="Internal symbol" value={terminal.provider?.applicationSymbol ?? "XAUUSD"} />
-                <Detail label="Provider symbol" value={terminal.provider?.providerSymbol ?? "—"} />
-                <Detail label="Pipeline status" value={synchronization?.status ?? "Not started"} tone={statusTone(synchronization?.status)} />
-                <Detail label="Visible completed" value={integer.format(completedVisible)} />
-                <Detail label="Visible forming" value={integer.format(terminal.candles.length - completedVisible)} />
-                <Detail label="Consecutive failures" value={integer.format(synchronization?.consecutiveFailures ?? 0)} tone={synchronization?.consecutiveFailures ? "negative" : undefined} />
-                <Detail label="Gap candidates" value={integer.format(synchronization?.detectedGapCount ?? 0)} tone={synchronization?.detectedGapCount ? "warning" : undefined} />
-              </dl>
-              <p className="quality-note">A missing interval is reported for review. The system never fabricates a candle.</p>
-            </article>
+            <LocalSignalPanel
+              signal={terminal.localSignal?.timeframe === terminal.timeframe ? terminal.localSignal : null}
+              timeframe={terminal.timeframe}
+              loading={terminal.state === "loading"}
+              error={terminal.localSignalError}
+            />
           </aside>
         </div>
 
@@ -213,6 +205,73 @@ export function MarketTerminal() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+function LocalSignalPanel({ signal, timeframe, loading, error }: Readonly<{
+  signal: LocalSignalSnapshot | null;
+  timeframe: MarketTimeframeCode;
+  loading: boolean;
+  error: string | null;
+}>) {
+  if (!signal) {
+    return (
+      <article className="terminal-panel local-signal-panel">
+        <PanelHeader eyebrow={`Local analyst · XAUUSD · ${timeframe}`} title="Current signal">
+          <span className="state-chip forming">{loading ? "Evaluating" : "Unavailable"}</span>
+        </PanelHeader>
+        <div className="analysis-empty">
+          <strong>{loading ? "Evaluating the latest closed candle…" : "Local signal is not ready"}</strong>
+          <span>{error ?? "Waiting for the deterministic local analyst."}</span>
+        </div>
+      </article>
+    );
+  }
+
+  const tone = localSignalTone(signal.state);
+  const reason = formatSignalReason(signal.reason);
+  return (
+    <article className="terminal-panel local-signal-panel">
+      <PanelHeader eyebrow={`Local analyst · ${signal.symbol} · ${signal.timeframe}`} title="Current signal">
+        <span className={`state-chip ${tone.chip}`}>{signal.state}</span>
+      </PanelHeader>
+
+      <div className="local-signal-hero" data-state={signal.state.toLowerCase()}>
+        <span className="local-signal-symbol" aria-hidden="true">{localSignalSymbol(signal.state)}</span>
+        <div>
+          <strong>{localSignalHeadline(signal)}</strong>
+          <small>{signal.state === "Nothing" ? reason : `${formatSignalScore(signal.score)} / ${formatSignalScore(signal.maxScore)} score · ${formatConfidence(signal.confidence)}`}</small>
+        </div>
+      </div>
+
+      <dl className="terminal-details local-signal-details">
+        <Detail label="Score" value={`${formatSignalScore(signal.score)} / ${formatSignalScore(signal.maxScore)}`} tone={tone.text} />
+        <Detail label="Confidence" value={formatConfidence(signal.confidence)} tone={tone.text} />
+        <Detail label={signal.state === "Nothing" ? "Reference price" : "Signal price"} value={formatPrice(signal.signalPrice)} />
+        <Detail label="Invalidation" value={formatPrice(signal.invalidationPrice)} />
+        <Detail label="Target" value={formatPrice(signal.targetPrice)} />
+        <Detail label="Valid until" value={formatDate(signal.validUntilUtc)} />
+        <Detail label="Signal candle" value={formatDate(signal.signalCandleTimeUtc)} />
+      </dl>
+
+      <section className="local-signal-evidence">
+        <div className="analysis-section-title"><span>Setup evidence</span><small>{signal.configurationVersion}</small></div>
+        <dl className="analysis-evidence-list">
+          <Detail label="Structure" value={formatEvidence(signal.structureState)} />
+          <Detail label="Liquidity" value={formatEvidence(signal.liquidityState)} />
+          <Detail label="Candle" value={formatEvidence(signal.candleState)} />
+          <Detail label="Momentum" value={formatEvidence(signal.momentumState)} />
+          <Detail label="KTR" value={formatEvidence(signal.ktrState)} />
+          <Detail label="Volatility" value={formatEvidence(signal.volatilityState)} />
+        </dl>
+      </section>
+
+      <p className="local-signal-note">
+        {signal.reason ? `${signal.state === "Stop" ? "Stopped" : "Decision"}: ${reason}. ` : ""}
+        Analysis only · no automatic trade execution.
+      </p>
+      <footer className="analysis-footer">Evaluated {formatDate(signal.evaluatedAtUtc)}</footer>
+    </article>
   );
 }
 
@@ -370,12 +429,32 @@ function StatusDot({ online }: Readonly<{ online: boolean }>) { return <i classN
 function formatPrice(value: number | null | undefined) { return value === null || value === undefined ? "—" : price.format(value); }
 function formatNumber(value: number | null | undefined, digits: number) { return value === null || value === undefined ? "—" : value.toFixed(digits); }
 function formatDate(value: string | null) { return value ? `${utcDate.format(new Date(value))} UTC` : "—"; }
-function formatWeeklyRange(now: Date) {
-  const end = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const start = new Date(end - (6 * MILLISECONDS_PER_DAY));
-  return `${utcShortDate.format(start)}–${utcShortDate.format(new Date(end))}`;
-}
 function formatEvidence(value: string) { return value.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replaceAll(":", ": "); }
+function formatSignalReason(value: string | null) {
+  if (!value) return "No active invalidation reason";
+  const text = value.toLowerCase().replaceAll("_", " ");
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+}
+function formatSignalScore(value: number) { return Number.isInteger(value) ? String(value) : value.toFixed(1); }
+function formatConfidence(value: number) { return `${Math.round(value * 100)}%`; }
+function localSignalTone(state: LocalSignalState) {
+  if (state === "Buy") return { chip: "complete", text: "positive" };
+  if (state === "Sell") return { chip: "negative", text: "negative" };
+  if (state === "Stop") return { chip: "forming", text: "warning" };
+  return { chip: "neutral", text: "neutral" };
+}
+function localSignalSymbol(state: LocalSignalState) {
+  if (state === "Buy") return "↑";
+  if (state === "Sell") return "↓";
+  if (state === "Stop") return "●";
+  return "—";
+}
+function localSignalHeadline(signal: LocalSignalSnapshot) {
+  if (signal.state === "Buy") return "Bullish setup active";
+  if (signal.state === "Sell") return "Bearish setup active";
+  if (signal.state === "Stop") return `${signal.originDirection ?? "Local"} setup stopped`;
+  return "No active setup";
+}
 function directionTone(direction: string) {
   if (direction === "Bullish") return "positive";
   if (direction === "Bearish") return "negative";

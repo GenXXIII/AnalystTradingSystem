@@ -120,9 +120,7 @@ internal sealed class AiResponseValidator : IAiResponseValidator
             if (measurement is null
                 || string.IsNullOrWhiteSpace(measurement.Name)
                 || !selectedById.TryGetValue(measurement.EvidenceId, out var evidence)
-                || !evidence.NumericValue.HasValue
-                || evidence.NumericValue.Value != measurement.Value
-                || !string.Equals(evidence.Unit, measurement.Unit, StringComparison.OrdinalIgnoreCase))
+                || !IsDeterministicMeasurement(evidence, measurement))
             {
                 throw Invalid("The AI response contains a measurement that was not supplied by deterministic evidence.");
             }
@@ -146,6 +144,18 @@ internal sealed class AiResponseValidator : IAiResponseValidator
             throw Invalid($"The AI {field} references evidence that was not selected for this analysis.");
         }
     }
+
+    private static bool IsDeterministicMeasurement(
+        AiEvidenceCandidate evidence,
+        AiInterpretationMeasurement measurement) =>
+        string.Equals(evidence.Unit, measurement.Unit, StringComparison.OrdinalIgnoreCase)
+        && new[]
+        {
+            evidence.NumericValue,
+            evidence.PreviousValue,
+            evidence.ExpectedValue,
+            evidence.ActualValue
+        }.Any(value => value.HasValue && value.Value == measurement.Value);
 
     private static AiProviderException Invalid(string message) =>
         new(AiInterpretationErrorCodes.InvalidResponse, message);

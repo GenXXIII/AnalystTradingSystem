@@ -45,6 +45,7 @@ internal sealed class AiEvidenceCompressor : IAiEvidenceCompressor
                 item.NumericValue,
                 item.OriginalValue,
                 item.Unit,
+                EconomicValues = EconomicValues(item),
                 item.Direction,
                 item.Importance,
                 item.Category,
@@ -82,6 +83,7 @@ internal sealed class AiEvidenceCompressor : IAiEvidenceCompressor
                 Summary = Limit(item.Summary, Math.Max(100, maximumCharacters / 4)),
                 item.NumericValue,
                 item.Unit,
+                EconomicValues = EconomicValues(item),
                 item.Direction,
                 item.Importance,
                 item.Category
@@ -124,6 +126,17 @@ internal sealed class AiEvidenceCompressor : IAiEvidenceCompressor
         var property = item.GetType().GetProperty("Id");
         return property?.GetValue(item) is Guid value && value == id;
     }
+
+    private static object? EconomicValues(AiEvidenceCandidate item) =>
+        item.PreviousValue.HasValue || item.ExpectedValue.HasValue || item.ActualValue.HasValue
+            ? new
+            {
+                Previous = item.PreviousValue,
+                Expected = item.ExpectedValue,
+                Actual = item.ActualValue,
+                item.Unit
+            }
+            : null;
 
     private static JsonElement? ParseMetadata(string? value)
     {

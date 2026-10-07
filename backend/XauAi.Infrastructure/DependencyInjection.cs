@@ -10,6 +10,7 @@ using XauAi.Application.News;
 using XauAi.Application.EconomicData;
 using XauAi.Application.Evidence;
 using XauAi.Application.TechnicalAnalysis;
+using XauAi.Application.LocalAnalysis;
 using XauAi.Infrastructure.MarketData;
 using XauAi.Infrastructure.MarketData.AllTick;
 using XauAi.Infrastructure.MarketData.Persistence;
@@ -28,6 +29,8 @@ using XauAi.Infrastructure.Evidence.Persistence;
 using XauAi.Application.AI;
 using XauAi.Infrastructure.AI;
 using XauAi.Infrastructure.AI.Persistence;
+using XauAi.Infrastructure.LocalAnalysis;
+using XauAi.Infrastructure.LocalAnalysis.Persistence;
 
 namespace XauAi.Infrastructure;
 
@@ -60,6 +63,8 @@ public static class DependencyInjection
             services, configuration, MarketDataOptions.SectionName);
         AddValidatedOptions<TechnicalAnalysisOptions, TechnicalAnalysisOptionsValidator>(
             services, configuration, TechnicalAnalysisOptions.SectionName);
+        AddValidatedOptions<LocalAnalystOptions, LocalAnalystOptionsValidator>(
+            services, configuration, LocalAnalystOptions.SectionName);
         AddValidatedOptions<NewsOptions, NewsOptionsValidator>(
             services, configuration, NewsOptions.SectionName);
         AddValidatedOptions<EconomicDataOptions, EconomicDataOptionsValidator>(
@@ -144,6 +149,41 @@ public static class DependencyInjection
             LowVolatilityRatio = technicalOptions.LowVolatilityRatio,
             HighVolatilityRatio = technicalOptions.HighVolatilityRatio,
             VeryHighVolatilityRatio = technicalOptions.VeryHighVolatilityRatio
+        });
+        var localAnalystOptions = configuration
+            .GetSection(LocalAnalystOptions.SectionName)
+            .Get<LocalAnalystOptions>() ?? new LocalAnalystOptions();
+        LocalAnalystOptionsValidator.TryParseValidity(localAnalystOptions.ValidityCandles, out var validityCandles);
+        services.AddSingleton(new LocalAnalystSettings
+        {
+            Enabled = localAnalystOptions.Enabled,
+            Symbol = localAnalystOptions.Symbol,
+            Timeframes = ParseTimeframes(localAnalystOptions.Timeframes),
+            EvaluationIntervalSeconds = localAnalystOptions.EvaluationIntervalSeconds,
+            HistoryLimit = localAnalystOptions.HistoryLimit,
+            MinimumCandles = localAnalystOptions.MinimumCandles,
+            StaleAfterIntervals = localAnalystOptions.StaleAfterIntervals,
+            MaximumAllowedGaps = localAnalystOptions.MaximumAllowedGaps,
+            EntryScoreThreshold = localAnalystOptions.EntryScoreThreshold,
+            MinimumDirectionalLead = localAnalystOptions.MinimumDirectionalLead,
+            StopOpposingScoreThreshold = localAnalystOptions.StopOpposingScoreThreshold,
+            RsiBullishMinimum = localAnalystOptions.RsiBullishMinimum,
+            RsiBullishMaximum = localAnalystOptions.RsiBullishMaximum,
+            RsiBearishMinimum = localAnalystOptions.RsiBearishMinimum,
+            RsiBearishMaximum = localAnalystOptions.RsiBearishMaximum,
+            AllowVeryHighVolatility = localAnalystOptions.AllowVeryHighVolatility,
+            StructureWeight = localAnalystOptions.StructureWeight,
+            TrendWeight = localAnalystOptions.TrendWeight,
+            LiquidityWeight = localAnalystOptions.LiquidityWeight,
+            CandleWeight = localAnalystOptions.CandleWeight,
+            MomentumWeight = localAnalystOptions.MomentumWeight,
+            KtrWeight = localAnalystOptions.KtrWeight,
+            InvalidationAtrMultiplier = localAnalystOptions.InvalidationAtrMultiplier,
+            TargetAtrMultiplier = localAnalystOptions.TargetAtrMultiplier,
+            EqualLevelToleranceAtr = localAnalystOptions.EqualLevelToleranceAtr,
+            ImportantLevelDistanceAtr = localAnalystOptions.ImportantLevelDistanceAtr,
+            ConfigurationVersion = localAnalystOptions.ConfigurationVersion,
+            ValidityCandles = validityCandles
         });
         var newsOptions = configuration
             .GetSection(NewsOptions.SectionName)
@@ -296,6 +336,7 @@ public static class DependencyInjection
             services.AddScoped<IAnalystSyncStateStore, EfAnalystSyncStateStore>();
             services.AddScoped<IEvidenceStore, EfEvidenceStore>();
             services.AddScoped<IAiInterpretationStore, EfAiInterpretationStore>();
+            services.AddScoped<ILocalSignalStore, EfLocalSignalStore>();
         }
         else
         {
@@ -314,6 +355,7 @@ public static class DependencyInjection
             services.AddSingleton<IAnalystSyncStateStore, DisabledAnalystSyncStateStore>();
             services.AddSingleton<IEvidenceStore, DisabledEvidenceStore>();
             services.AddSingleton<IAiInterpretationStore, DisabledAiInterpretationStore>();
+            services.AddSingleton<ILocalSignalStore, DisabledLocalSignalStore>();
         }
 
         services.AddSingleton(new HttpClient(new SocketsHttpHandler
@@ -410,6 +452,7 @@ public static class DependencyInjection
         services.AddHostedService<AllTickRealtimeWorker>();
         services.AddHostedService<TwelveDataReferenceWorker>();
         services.AddHostedService<MarketDataSynchronizationWorker>();
+        services.AddHostedService<LocalAnalystWorker>();
         services.AddHealthChecks()
             .AddCheck<MarketDataProviderHealthCheck>(
                 "market-data-provider",

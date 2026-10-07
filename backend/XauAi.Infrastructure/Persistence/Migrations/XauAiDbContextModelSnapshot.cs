@@ -2800,6 +2800,56 @@ namespace XauAi.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("XauAi.Domain.Signals.LocalAnalystProcessingState", b =>
+                {
+                    b.Property<Guid>("InstrumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TimeframeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CurrentTradingSignalId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("LastProcessedCandleTimeUtc")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("LastReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("LastResult")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("LastSnapshotJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("LastStrategyEvaluationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.HasKey("InstrumentId", "TimeframeId");
+
+                    b.HasIndex("CurrentTradingSignalId");
+
+                    b.HasIndex("LastStrategyEvaluationId");
+
+                    b.HasIndex("TimeframeId");
+
+                    b.HasIndex("UpdatedAtUtc")
+                        .HasDatabaseName("IX_LocalAnalystProcessingStates_UpdatedAtUtc");
+
+                    b.ToTable("LocalAnalystProcessingStates", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_LocalAnalystProcessingStates_SnapshotJson", "[LastSnapshotJson] IS NULL OR ISJSON([LastSnapshotJson]) = 1");
+                        });
+                });
+
             modelBuilder.Entity("XauAi.Domain.Signals.SignalOutcome", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2875,6 +2925,16 @@ namespace XauAi.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("AiAnalysisId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("CandleState")
+                        .HasMaxLength(80)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<string>("ConfigurationVersion")
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetimeoffset(7)")
@@ -2886,22 +2946,76 @@ namespace XauAi.Infrastructure.Persistence.Migrations
                         .IsUnicode(false)
                         .HasColumnType("varchar(32)");
 
+                    b.Property<DateTimeOffset?>("EndedAtUtc")
+                        .HasColumnType("datetimeoffset(7)");
+
                     b.Property<decimal?>("EntryPrice")
                         .HasPrecision(19, 8)
                         .HasColumnType("decimal(19,8)");
 
+                    b.Property<string>("ExplanationJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid>("InstrumentId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("InvalidationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("KtrState")
+                        .HasMaxLength(80)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<DateTimeOffset?>("LastEvaluatedCandleTimeUtc")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("LiquidityState")
+                        .HasMaxLength(80)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<decimal?>("MaxScore")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
 
                     b.Property<decimal?>("ModelConfidence")
                         .HasPrecision(9, 6)
                         .HasColumnType("decimal(9,6)");
 
+                    b.Property<string>("MomentumState")
+                        .HasMaxLength(80)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(80)");
+
                     b.Property<string>("RiskConditionsJson")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<decimal?>("Score")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
                     b.Property<DateTimeOffset>("SignalAtUtc")
                         .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("SignalCandleId")
+                        .HasMaxLength(160)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(160)");
+
+                    b.Property<DateTimeOffset?>("SignalCandleTimeUtc")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("SignalKey")
+                        .HasMaxLength(160)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(160)");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(48)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(48)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -2919,6 +3033,11 @@ namespace XauAi.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("StrategyVersionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("StructureState")
+                        .HasMaxLength(80)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(80)");
+
                     b.Property<decimal?>("TakeProfitPrice")
                         .HasPrecision(19, 8)
                         .HasColumnType("decimal(19,8)");
@@ -2929,9 +3048,27 @@ namespace XauAi.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("TimeframeId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset(7)")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<DateTimeOffset?>("ValidUntilUtc")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("VolatilityState")
+                        .HasMaxLength(80)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(80)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AiAnalysisId");
+
+                    b.HasIndex("SignalKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TradingSignals_SignalKey")
+                        .HasFilter("[SignalKey] IS NOT NULL AND [SignalKey] <> ''");
 
                     b.HasIndex("StrategyEvaluationId");
 
@@ -2946,11 +3083,22 @@ namespace XauAi.Infrastructure.Persistence.Migrations
                     b.HasIndex("StrategyVersionId", "SignalAtUtc")
                         .HasDatabaseName("IX_TradingSignals_StrategyVersion_SignalAtUtc");
 
+                    b.HasIndex("InstrumentId", "TimeframeId", "Source")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TradingSignals_LocalAnalyst_Active")
+                        .HasFilter("[Status] = 'ACTIVE' AND [Source] = 'LocalAnalyst'");
+
                     b.ToTable("TradingSignals", null, t =>
                         {
+                            t.HasCheckConstraint("CK_TradingSignals_ExplanationJson", "[ExplanationJson] IS NULL OR ISJSON([ExplanationJson]) = 1");
+
+                            t.HasCheckConstraint("CK_TradingSignals_MaxScore", "[MaxScore] IS NULL OR [MaxScore] > 0");
+
                             t.HasCheckConstraint("CK_TradingSignals_ModelConfidence", "[ModelConfidence] IS NULL OR [ModelConfidence] BETWEEN 0 AND 1");
 
                             t.HasCheckConstraint("CK_TradingSignals_RiskConditionsJson", "[RiskConditionsJson] IS NULL OR ISJSON([RiskConditionsJson]) = 1");
+
+                            t.HasCheckConstraint("CK_TradingSignals_Score", "[Score] IS NULL OR [Score] >= 0");
 
                             t.HasCheckConstraint("CK_TradingSignals_TimeHorizon", "[TimeHorizonSeconds] IS NULL OR [TimeHorizonSeconds] > 0");
                         });
@@ -2976,6 +3124,87 @@ namespace XauAi.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_TradingSignalEvidence_EvidenceRecordId");
 
                     b.ToTable("TradingSignalEvidence", (string)null);
+                });
+
+            modelBuilder.Entity("XauAi.Domain.Signals.TradingSignalLifecycleEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWSEQUENTIALID()");
+
+                    b.Property<DateTimeOffset>("CandleTimeUtc")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<decimal?>("Confidence")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset(7)")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<string>("DetailsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<DateTimeOffset>("OccurredAtUtc")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("PreviousStatus")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<decimal?>("Price")
+                        .HasPrecision(19, 8)
+                        .HasColumnType("decimal(19,8)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<decimal?>("Score")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<Guid?>("StrategyEvaluationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TradingSignalId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StrategyEvaluationId");
+
+                    b.HasIndex("TradingSignalId", "OccurredAtUtc")
+                        .HasDatabaseName("IX_TradingSignalLifecycleEvents_Signal_Time");
+
+                    b.ToTable("TradingSignalLifecycleEvents", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_TradingSignalLifecycleEvents_Confidence", "[Confidence] IS NULL OR [Confidence] BETWEEN 0 AND 1");
+
+                            t.HasCheckConstraint("CK_TradingSignalLifecycleEvents_DetailsJson", "[DetailsJson] IS NULL OR ISJSON([DetailsJson]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("XauAi.Domain.Statistics.PerformanceStatistic", b =>
@@ -3129,6 +3358,17 @@ namespace XauAi.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("UX_Strategies_Key");
 
                     b.ToTable("Strategies", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("40000000-0000-0000-0000-000000000001"),
+                            Category = "DeterministicSignal",
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2026, 10, 7, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Description = "Phase 12 deterministic, AI-independent local analyst and signal engine.",
+                            Key = "local-analyst-xauusd",
+                            Name = "Local XAUUSD Analyst"
+                        });
                 });
 
             modelBuilder.Entity("XauAi.Domain.Strategies.StrategyEvaluation", b =>
@@ -3264,6 +3504,19 @@ namespace XauAi.Infrastructure.Persistence.Migrations
                     b.ToTable("StrategyVersions", null, t =>
                         {
                             t.HasCheckConstraint("CK_StrategyVersions_DefinitionJson", "ISJSON([DefinitionJson]) = 1");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("41000000-0000-0000-0000-000000000001"),
+                            CreatedAtUtc = new DateTimeOffset(new DateTime(2026, 10, 7, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DefinitionHash = "05aee2de1eedebe1cc22d748166ed8660012214084f332bad184fef69272d62b",
+                            DefinitionJson = "{\"engine\":\"local-analyst\",\"version\":\"phase12-v1\",\"symbol\":\"XAUUSD\",\"states\":[\"NOTHING\",\"BUY\",\"SELL\",\"STOP\"],\"usesAi\":false}",
+                            EffectiveFromUtc = new DateTimeOffset(new DateTime(2026, 10, 7, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Status = "Active",
+                            StrategyId = new Guid("40000000-0000-0000-0000-000000000001"),
+                            Version = "phase12-v1"
                         });
                 });
 
@@ -3667,6 +3920,31 @@ namespace XauAi.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("XauAi.Domain.Signals.LocalAnalystProcessingState", b =>
+                {
+                    b.HasOne("XauAi.Domain.Signals.TradingSignal", null)
+                        .WithMany()
+                        .HasForeignKey("CurrentTradingSignalId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("XauAi.Domain.ReferenceData.Instrument", null)
+                        .WithMany()
+                        .HasForeignKey("InstrumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("XauAi.Domain.Strategies.StrategyEvaluation", null)
+                        .WithMany()
+                        .HasForeignKey("LastStrategyEvaluationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("XauAi.Domain.ReferenceData.TimeframeDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("TimeframeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("XauAi.Domain.Signals.SignalOutcome", b =>
                 {
                     b.HasOne("XauAi.Domain.Signals.TradingSignal", null)
@@ -3713,6 +3991,20 @@ namespace XauAi.Infrastructure.Persistence.Migrations
                         .HasForeignKey("EvidenceRecordId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("XauAi.Domain.Signals.TradingSignal", null)
+                        .WithMany()
+                        .HasForeignKey("TradingSignalId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("XauAi.Domain.Signals.TradingSignalLifecycleEvent", b =>
+                {
+                    b.HasOne("XauAi.Domain.Strategies.StrategyEvaluation", null)
+                        .WithMany()
+                        .HasForeignKey("StrategyEvaluationId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("XauAi.Domain.Signals.TradingSignal", null)
                         .WithMany()

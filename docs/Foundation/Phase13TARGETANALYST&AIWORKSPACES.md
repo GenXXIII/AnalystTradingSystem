@@ -1,264 +1,785 @@
-# PHASE 13 — TARGET ANALYST & AI WORKSPACES
+============================================================
+PHASE 13 — TARGET ANALYST & AI WORKSPACES
+============================================================
 
-## OBJECTIVE
+Project: AnalystTradingSystem
+Phase: 13
 
-Build the Target Analyst as an independent, AI-powered analysis system whose purpose is to predict the **best-supported future price target** from available market, news, economic, macro, and analyst evidence.
+IMPORTANT ARCHITECTURE RULE
+------------------------------------------------------------
 
-Each user click on **[TARGET ANALYST]** creates **one new target analysis**.
+This phase implements the TARGET ANALYST.
 
-The Target Analyst must remain completely independent from:
+Target Analyst is:
 
-* 🟢 Local Analyst
-* 🔮 Full Analyst
+- AI-assisted
+- user-triggered
+- predictive
+- forward-looking
+- evidence-driven
+- independent from Local Analyst
+- independent from Full Analyst
+- independent from Future
+- independent from Telegram Scanner
 
-It must not copy or inherit their BUY/SELL/WAIT decisions.
+The Target Analyst's purpose is to determine ONE strong
+forward target based on the available evidence.
 
----
+It does NOT produce:
 
-## CORE FLOW
+- BUY
+- SELL
+- WAIT
+- automatic trade execution
+- Telegram signals
 
-User clicks [TARGET ANALYST]
-↓
-Create Target Analysis Job
-↓
-Capture Analysis Snapshot
-↓
-Validate Available Evidence
-↓
-Collect Market + News + Economic + Analyst Evidence
-↓
-Compress / Normalize Evidence
-↓
-8 Independent AI Workspaces
-↓
-Compare Specialist Results
-↓
-Target Master AI
-↓
-Target Validation
-↓
+The Target Analyst produces:
+
 🎯 ONE TARGET
-↓
-Target Result Panel
-↓
-Lifecycle Monitoring
 
----
+If evidence is insufficient:
 
-## TARGET ANALYST PURPOSE
+→ NO VALID TARGET
 
-The Target Analyst answers:
 
-> "Based on the evidence available now, what is the most defensible price target the market could reach?"
+============================================================
+1. OBJECTIVE
+============================================================
 
-It is predictive and forward-looking.
+Build a deep predictive Target Analyst that analyzes the
+current XAUUSD market and determines the most defensible
+forward target.
 
-It is NOT a real-time BUY/SELL engine.
+The analysis should use all relevant available evidence,
+including:
 
-It does not need to continuously react to every market tick like the Full Analyst.
+- current market data
+- historical market data
+- multi-timeframe structure
+- liquidity
+- candles
+- momentum / flow
+- KTR
+- important levels
+- volatility
+- economic data
+- macro conditions
+- relevant news
+- analyst information
+- previously interpreted evidence
 
----
+"All evidence" means all RELEVANT evidence.
 
-## ONE CLICK = ONE TARGET
+Do not send unlimited raw data to AI.
 
-Every successful Target Analyst run must produce exactly:
 
-* One target price
-* One invalidation/SL level or invalidation condition
-* One analysis result
-* One lifecycle
+============================================================
+2. CORE FLOW
+============================================================
 
-Do not generate:
+User clicks:
 
-* Target 1 + Target 2
-* Multiple competing targets
-* A list of possible targets
+[TARGET ANALYST]
 
-The system should select the single best-supported target.
+        ↓
 
----
+Create Target Analysis Job
 
-## 8 AI WORKSPACES
+        ↓
 
-Target Analyst must have 8 independently configurable AI workspaces.
+Capture Current Market Snapshot
 
-### 1. TARGET STRUCTURE AI
+        ↓
+
+Validate Market Data
+
+        ↓
+
+Collect Relevant Evidence
+
+        ↓
+
+Evidence Selection
+
+        ↓
+
+Evidence Validation
+
+        ↓
+
+Evidence Compression
+
+        ↓
+
+Run Target AI Specialists
+
+        ↓
+
+Compare Specialist Interpretations
+
+        ↓
+
+Conflict Detection
+
+        ↓
+
+Target Master AI
+
+        ↓
+
+Target Validation
+
+        ↓
+
+ONE TARGET
+
+        ↓
+
+Create Target Result
+
+        ↓
+
+Display Target Panel
+
+        ↓
+
+Monitor Target Lifecycle
+
+
+============================================================
+3. ONE CLICK = ONE TARGET
+============================================================
+
+Every user click creates one independent Target Analysis job.
+
+One successful analysis must produce exactly:
+
+🎯 ONE TARGET
+
+Do NOT produce:
+
+- Target 1
+- Target 2
+- Target 3
+- primary target
+- secondary target
+- alternative target
+
+The system must select the single strongest target.
+
+If no target is sufficiently supported:
+
+→ NO VALID TARGET
+
+
+============================================================
+4. TARGET ANALYST DOES NOT DECIDE DIRECTION
+============================================================
+
+Target Analyst is not the Local Analyst or Full Analyst.
+
+Do not require:
+
+🟢 BUY
+or
+🔴 SELL
+
+as the primary output.
+
+The target analysis determines the strongest forward target
+based on evidence.
+
+Direction/context may be part of the reasoning internally,
+but the final Target Analyst result must remain focused on
+ONE target.
+
+
+============================================================
+5. TARGET AI WORKSPACES
+============================================================
+
+Create independent AI workspaces:
+
+1. Target Structure AI
+2. Target Liquidity AI
+3. Target Candle AI
+4. Target Flow AI
+5. Target KTR AI
+6. Target News AI
+7. Target Risk AI
+8. Target Master AI
+
+Each workspace must have a specific responsibility.
+
+Do not make every specialist analyze the entire market.
+
+
+============================================================
+6. TARGET STRUCTURE AI
+============================================================
 
 Analyze:
 
-* 1D structure
-* 4H structure
-* 1H structure
-* 30M structure
-* 15M structure
-* 5M structure
-* Trend
-* Range
-* Breakout
-* Breakdown
-* Structure transitions
+- 1D structure
+- 4H structure
+- 1H structure
+- 30M structure
+- 15M structure
+- 5M structure
+- 1M structure where relevant
+- HH / HL
+- LH / LL
+- BOS
+- CHoCH
+- trend
+- range
+- transition
+- structural invalidation
 
-Determine where the current structure provides support for a potential target.
+Identify price areas that are structurally meaningful as
+potential forward targets.
 
----
+Do not force a target if structure is unclear.
 
-### 2. TARGET LIQUIDITY AI
 
-Analyze:
-
-* Previous highs
-* Previous lows
-* Equal highs
-* Equal lows
-* Liquidity pools
-* Liquidity sweeps
-* Stop clusters
-* Break-and-retest areas
-* Likely liquidity destinations
-
-Identify price areas that could reasonably become future destinations.
-
----
-
-### 3. TARGET CANDLE AI
+============================================================
+7. TARGET LIQUIDITY AI
+============================================================
 
 Analyze:
 
-* Candle behavior
-* Rejection
-* Expansion
-* Compression
-* Engulfing
-* Breakout candles
-* Failed breakouts
-* Momentum candles
-* Exhaustion
-* Multi-candle formations
+- previous highs
+- previous lows
+- equal highs
+- equal lows
+- swing liquidity
+- liquidity pools
+- liquidity sweeps
+- reaction after sweep
+- likely liquidity attraction
+- liquidity invalidation
 
-Focus on what candle behavior suggests about potential future price movement.
+Identify the strongest relevant forward liquidity destination.
 
----
+Do not claim order-book liquidity unless actual order-book
+data exists.
 
-### 4. TARGET FLOW AI
 
-Analyze:
+============================================================
+8. TARGET CANDLE AI
+============================================================
 
-* Momentum
-* Acceleration
-* Deceleration
-* Continuation
-* Reversal behavior
-* Absorption
-* Exhaustion
-* Expansion/contraction
-* Short-term market flow
+Analyze relevant candle behavior:
 
-Determine whether current flow supports reaching a potential target.
+- rejection
+- engulfing
+- momentum
+- breakout
+- failed breakout
+- continuation
+- exhaustion
+- reversal characteristics
+- multi-candle behavior
 
----
+Candle evidence must be interpreted together with structure
+and price location.
 
-### 5. TARGET KTR AI
+Do not select a target from a candle pattern alone.
 
-Analyze:
 
-* Key Trading Ranges
-* Important price zones
-* Session levels
-* Previous-day levels
-* Support/resistance
-* Range boundaries
-* Breakout/retest areas
-* Relevant price clusters
-
-Identify technically meaningful target areas.
-
----
-
-### 6. TARGET NEWS AI
+============================================================
+9. TARGET FLOW AI
+============================================================
 
 Analyze:
 
-* Database news
-* Online/recent news
-* Upcoming events
-* High-impact events
-* Historical news
-* News direction
-* Market reaction
-* Expected vs actual reaction
-* USD/XAU-related information
+- momentum
+- directional pressure
+- acceleration
+- deceleration
+- impulse
+- pullback
+- continuation
+- exhaustion
+- volume/tick-volume where available
+- volatility expansion/contraction
 
-News AI must distinguish:
+Do not fabricate order-flow information that the data source
+does not provide.
 
-```text
+
+============================================================
+10. TARGET KTR AI
+============================================================
+
+Analyze:
+
+- KTR
+- important price levels
+- previous session levels
+- previous highs/lows
+- volatility-adjusted levels
+- breakout/retest levels
+- relevant technical zones
+
+Use the project's existing KTR definitions.
+
+Do not invent unsupported levels.
+
+
+============================================================
+11. TARGET NEWS AI
+============================================================
+
+Analyze relevant:
+
+- economic events
+- USD events
+- macro conditions
+- central-bank information
+- financial news
+- analyst information
+- expected vs actual news reaction
+- current relevance
+- market reaction
+
+Separate:
+
 FACT
-vs
-ANALYST OPINION
-vs
-AI INTERPRETATION
-```
 
----
+from
 
-### 7. TARGET RISK AI
+INTERPRETATION.
 
-Analyze:
+Do not treat an AI interpretation as raw factual data.
 
-* Target distance
-* Volatility
-* ATR
-* Market conditions
-* Invalidating conditions
-* Risk/reward structure
-* Target feasibility
-* Excessive distance
-* Conflicting evidence
 
-Risk AI must be able to reject an unreasonable target.
+============================================================
+12. TARGET RISK AI
+============================================================
 
----
+Risk AI evaluates whether the proposed target is sufficiently
+supported.
 
-### 8. TARGET MASTER AI
+Consider:
 
-Receive the structured outputs from the seven specialist workspaces.
+- volatility
+- distance to target
+- structural obstacles
+- liquidity obstacles
+- important levels between current price and target
+- major news risk
+- conflicting evidence
+- market regime
+- data quality
+- invalidation conditions
+- uncertainty
 
-It must:
+Risk AI must be allowed to reject a target.
 
-* Compare evidence
-* Detect conflicts
-* Weight stronger evidence
-* Reject weak reasoning
-* Consider uncertainty
-* Determine the strongest target candidate
-* Select exactly ONE target
-* Produce structured reasoning
-* Produce confidence
-* Produce invalidation information
+Possible result:
 
-The Master AI must not simply vote by majority.
+NO VALID TARGET
 
----
 
-## AI PROVIDER CONFIGURATION
+============================================================
+13. TARGET MASTER AI
+============================================================
 
-Every Target AI workspace must have its own independent configuration.
+Target Master is the final synthesis layer.
 
-Support:
+It receives structured outputs from:
 
-```text
-Provider
-API Key
-Model
-Base URL
-Timeout
-Max Tokens
-Temperature
-Enabled
-```
+- Structure AI
+- Liquidity AI
+- Candle AI
+- Flow AI
+- KTR AI
+- News AI
+- Risk AI
+
+It must NOT simply count votes.
 
 Example:
 
-```env
+Structure → Target area A
+Liquidity → Target area A
+Candle → Weak support
+Flow → Target area A
+KTR → Target area B
+News → Uncertain
+Risk → Target A acceptable
+
+Master must determine:
+
+- which evidence is strongest
+- which evidence is independent
+- which evidence is stale
+- why specialists disagree
+- whether obstacles invalidate the target
+- whether the target is realistically supported
+- whether uncertainty is too high
+
+Final result:
+
+🎯 ONE TARGET
+
+OR
+
+NO VALID TARGET
+
+
+============================================================
+14. TARGET EVIDENCE PACKAGE
+============================================================
+
+Target Analyst should use a structured evidence package.
+
+Potential sources:
+
+Market:
+- AllTick
+- Twelve Data
+- normalized candles
+- multi-timeframe candles
+- technical indicators
+- market structure
+- liquidity
+- volatility
+- KTR
+
+Information:
+- economic data
+- news
+- macro data
+- analyst information
+
+Historical:
+- relevant historical market context
+- previous reactions
+- previous levels
+- previous structural behavior
+
+Do not blindly send all historical data.
+
+Evidence must be selected by relevance.
+
+
+============================================================
+15. SNAPSHOT
+============================================================
+
+Every Target Analysis job must create a snapshot.
+
+Snapshot should include:
+
+- Symbol
+- CurrentPrice
+- AnalysisTime
+- RequestedTimeframe
+- AvailableTimeframes
+- Current market state
+- Candle state
+- Data versions
+- Evidence IDs
+- Provider information
+- AI configuration versions
+- Prompt versions
+
+The snapshot must represent the information available at the
+time the user requested the analysis.
+
+
+============================================================
+16. LOOK-AHEAD PROTECTION
+============================================================
+
+Target analysis must not use information that was unavailable
+at the analysis time.
+
+Enforce:
+
+Evidence.AvailableAt <= AnalysisTime
+
+Do not allow future market data, future news, or future
+revisions to contaminate the analysis snapshot.
+
+
+============================================================
+17. TARGET VALIDATION
+============================================================
+
+Before creating the final target, validate:
+
+- target is a valid price
+- target is meaningfully different from current price
+- target is supported by evidence
+- target does not contradict critical structure without
+  sufficient justification
+- target is not based on stale evidence
+- target is not based on fabricated information
+- target has acceptable confidence
+- target has acceptable risk
+- target has valid invalidation conditions
+
+If validation fails:
+
+→ NO VALID TARGET
+
+
+============================================================
+18. TARGET RESULT
+============================================================
+
+Successful example:
+
+┌──────────────────────────────────────┐
+│ TARGET ANALYST           XAUUSD      │
+│                                      │
+│ 🎯 TARGET                            │
+│ 4,190.00                             │
+│                                      │
+│ 🛡 INVALIDATION                      │
+│ 4,145.00                             │
+│                                      │
+│ Confidence: High                     │
+│ Valid Until: ...                     │
+│                                      │
+│ Basis:                               │
+│ • Liquidity destination              │
+│ • Higher-TF structure                │
+│ • KTR level                          │
+│ • Momentum alignment                 │
+│                                      │
+│        [ CANCEL TARGET ]             │
+└──────────────────────────────────────┘
+
+The exact UI implementation is handled separately.
+
+
+============================================================
+19. NO VALID TARGET
+============================================================
+
+When evidence is insufficient:
+
+┌──────────────────────────────────────┐
+│ TARGET ANALYST           XAUUSD      │
+│                                      │
+│ ⚪ NO VALID TARGET                   │
+│                                      │
+│ Reason: Conflicting evidence         │
+│                                      │
+│ Target analysis was not activated.   │
+└──────────────────────────────────────┘
+
+Never fabricate a target merely because the user clicked the
+button.
+
+
+============================================================
+20. ACTIVE TARGET
+============================================================
+
+After a valid target is produced:
+
+Status:
+
+ANALYZING
+    ↓
+SUCCESS
+    ↓
+ACTIVE
+
+Then:
+
+ACTIVE
+    ↓
+TARGET HIT
+    OR
+INVALIDATED
+    OR
+EXPIRED
+    OR
+CANCELLED
+
+
+============================================================
+21. TARGET MODEL
+============================================================
+
+Create a structured TargetAnalysis model.
+
+Suggested:
+
+TargetAnalysis
+├── Id
+├── Symbol
+├── AnalysisTime
+├── CurrentPrice
+├── Timeframe
+├── TargetPrice
+├── InvalidationPrice
+├── DirectionContext
+├── Confidence
+├── ValidUntil
+├── EvidenceIds[]
+├── SpecialistResultIds[]
+├── MasterResultId
+├── ReasoningSummary
+├── Uncertainty
+├── Status
+├── Provider
+├── Model
+├── PromptVersion
+├── CreatedAt
+├── UpdatedAt
+└── EndedAt
+
+DirectionContext is contextual information only.
+
+Do not convert TargetAnalysis into a Full Analyst signal.
+
+
+============================================================
+22. TARGET LIFECYCLE
+============================================================
+
+Target lifecycle:
+
+USER CLICK
+    ↓
+ANALYZING
+    ↓
+SUCCESS
+    ↓
+ACTIVE
+    ↓
+┌───────────────┬───────────────┬───────────────┐
+│               │               │
+▼               ▼               ▼
+TARGET HIT   INVALIDATED     EXPIRED
+│               │               │
+└───────────────┴───────────────┘
+                ↓
+             HISTORY
+
+
+User can also:
+
+ACTIVE
+   ↓
+[CANCEL TARGET]
+   ↓
+CANCELLED
+   ↓
+HISTORY
+
+
+============================================================
+23. CANCEL TARGET
+============================================================
+
+The result panel must provide:
+
+[ CANCEL TARGET ]
+
+When cancelled:
+
+- stop active target monitoring
+- remove active target UI representation
+- remove active chart object
+- mark target CANCELLED
+- preserve historical record
+- preserve evidence
+- preserve specialist results
+- preserve Master result
+
+Cancellation must not delete history.
+
+
+============================================================
+24. TARGET AND LOCAL ANALYST INDEPENDENCE
+============================================================
+
+Local Analyst:
+
+🟢 BUY
+
+Target Analyst:
+
+🎯 4,190
+
+The Target Analyst did not receive the Local BUY as a
+decision input.
+
+Likewise:
+
+Local Analyst:
+
+🔴 SELL
+
+Target Analyst:
+
+🎯 4,250
+
+This is valid.
+
+Do not force agreement.
+
+
+============================================================
+25. TARGET AND FULL ANALYST INDEPENDENCE
+============================================================
+
+Full Analyst may later produce:
+
+🔴 SELL
+
+Target Analyst may produce:
+
+🎯 4,190
+
+These are separate analytical functions.
+
+Do not allow Full Analyst to overwrite Target Analyst.
+
+Do not allow Target Analyst to overwrite Full Analyst.
+
+
+============================================================
+26. TELEGRAM SCANNER INDEPENDENCE
+============================================================
+
+The XAUUSD Telegram Scanner is a separate project.
+
+Target Analyst must NOT:
+
+- send Telegram signals
+- consume Telegram signals
+- depend on Telegram
+- use Telegram's BUY/SELL decision
+- generate Telegram alerts
+
+Telegram Scanner remains:
+
+24/7
+deterministic
+M5
+rule-based
+no AI decision
+
+It is not part of this phase.
+
+
+============================================================
+27. AI PROVIDER CONFIGURATION
+============================================================
+
+Every Target AI workspace requires independent configuration.
+
+Required:
+
 TARGET_STRUCTURE_AI_PROVIDER=
 TARGET_STRUCTURE_AI_API_KEY=
 TARGET_STRUCTURE_AI_MODEL=
@@ -298,442 +819,143 @@ TARGET_MASTER_AI_PROVIDER=
 TARGET_MASTER_AI_API_KEY=
 TARGET_MASTER_AI_MODEL=
 TARGET_MASTER_AI_BASE_URL=
-```
 
-Do not hard-code a provider.
+Also support:
 
-Do not use Full Analyst credentials as an automatic fallback.
+- Timeout
+- Max Tokens
+- Temperature
+- Enabled
 
----
 
-## ANALYSIS SNAPSHOT
+============================================================
+28. AI FAILURE HANDLING
+============================================================
 
-When the user clicks Target Analyst, immediately create an immutable analysis snapshot.
+If a specialist AI fails:
 
-The snapshot must record:
-
-* Symbol
-* Current price
-* Current time
-* Timeframes
-* Candle state
-* Market-data versions
-* News evidence
-* Economic evidence
-* Analyst evidence
-* Evidence IDs
-* Provider information
-* Analysis configuration
-* Prompt versions
-
-The Target result must always be traceable to the evidence available at that moment.
-
----
-
-## EVIDENCE COLLECTION
-
-Target Analyst can use:
-
-* AllTick market data
-* Twelve Data historical/reference data
-* Normalized candles
-* Multi-timeframe data
-* News database
-* Recent online news
-* Economic data
-* Macro data
-* Analyst information
-* Local technical evidence
-* Historical market context
-
-Do not blindly send raw databases to AI.
-
-Use the Phase 10/11 evidence foundation.
-
----
-
-## LOCAL ANALYST INDEPENDENCE
-
-The Target Analyst MUST NOT use the Local Analyst's final signal as an instruction.
-
-Example:
-
-```text
-Local = BUY
-Target = 4,190
-```
-
-Target AI must reach its target independently.
-
-Likewise:
-
-```text
-Local = SELL
-Target = 4,210
-```
-
-is technically allowed if the evidence supports it.
-
-The systems must not be forced to agree.
-
----
-
-## TARGET SELECTION
-
-The Master AI should evaluate candidate price areas and select the strongest one.
-
-Target selection should consider:
-
-* Structure
-* Liquidity
-* KTR
-* Candle evidence
-* Flow
-* News
-* Macro
-* Volatility
-* Distance
-* Invalidation
-* Conflicts
-* Confidence
-
-The final result must contain exactly one target.
-
----
-
-## TARGET RESULT
-
-Successful analysis should produce:
-
-```text
-🎯 TARGET
-XAUUSD
-Target: 4,190.00
-
-🛡 INVALIDATION
-4,165.00
-
-Confidence:
-High / Medium / Low
-
-Reason:
-Short structured explanation
-
-Valid Until:
-Time-based validity
-```
-
-The exact UI can be refined during Phase 20.
-
----
-
-## TARGET RESULT PANEL
-
-While analysis is running:
-
-```text
-┌──────────────────────────────┐
-│ TARGET ANALYST               │
-│                              │
-│ 🔄 Getting signal candle...  │
-│ 🔄 Collecting evidence...    │
-│ 🔄 Running AI workspaces...  │
-│                              │
-│          [ CANCEL ]          │
-└──────────────────────────────┘
-```
-
-Do not show the final target before successful completion.
-
----
-
-## SUCCESS STATE
-
-After successful analysis:
-
-```text
-┌──────────────────────────────┐
-│ TARGET ANALYST · XAUUSD      │
-│                              │
-│ 🎯 TARGET                    │
-│ 4,190.00                     │
-│                              │
-│ 🛡 INVALIDATION              │
-│ 4,165.00                     │
-│                              │
-│ Reason                       │
-│ ...                          │
-│                              │
-│ Valid Until                  │
-│ ...                          │
-│                              │
-│      [ CANCEL TARGET ]       │
-└──────────────────────────────┘
-```
-
----
-
-## CANCEL BEHAVIOR
-
-The user must be able to cancel the active Target result.
-
-When cancellation succeeds:
-
-```text
-CANCEL TARGET
-↓
-Stop lifecycle monitoring
-↓
-Remove active chart target
-↓
-Remove active result panel
-↓
-Clear active Target state
-↓
-Return to [ANALYZE]
-```
-
-Historical analysis data must remain stored.
-
-Cancellation must not delete historical records.
-
----
-
-## TARGET CHART OBJECT
-
-The successful Target Analyst should render one target object on the market chart.
-
-Example:
-
-```text
-Current Price
-     │
-     │
-     │
-     └──────────────── 🎯 Target
-```
-
-The target must be visually distinct from:
-
-* 🟢 Local BUY
-* 🔴 Local SELL
-* 🟡 Local STOP
-* 🔮 Full Analyst Future
-
-Do not place target objects under every candle.
-
----
-
-## TARGET VALIDITY
-
-Every target must have a validity period.
-
-Examples:
-
-* Short-term target
-* Medium short-term target
-
-The validity duration must be determined from the analysis context and configurable.
-
-A target must never remain active forever.
-
----
-
-## TARGET LIFECYCLE
-
-```text
-ANALYZING
-   ↓
-SUCCESS
-   ↓
-ACTIVE
-   ↓
-┌─────────────┬─────────────┬─────────────┐
-↓             ↓             ↓
-TARGET HIT   INVALIDATED   TIME EXPIRED
-↓             ↓             ↓
-REMOVE       REMOVE        REMOVE
-```
-
-The user can also manually cancel:
-
-```text
-ACTIVE
-  ↓
-CANCEL TARGET
-  ↓
-REMOVE
-```
-
----
-
-## TARGET INVALIDATION
-
-A target becomes invalid when the conditions supporting it are no longer valid.
-
-Invalidation can consider:
-
-* Structure failure
-* Liquidity failure
-* Major market reversal
-* News shock
-* Price violation
-* Risk condition
-* Analysis validity expiration
-
-Do not keep a target active simply because its original prediction has not been reached.
-
----
-
-## NEWS AND MACRO
-
-Target Analyst can perform deeper research because its purpose is predictive rather than continuous real-time decision-making.
-
-It may use:
-
-* Historical news
-* Current news
-* Online news
-* Economic calendar
-* Macro conditions
-* Previous market reactions
-* Analyst opinions
-
-All evidence must remain timestamped.
-
----
-
-## AI COST / TOKEN MANAGEMENT
-
-Use the AI providers efficiently.
-
-Before each workspace call:
-
-* Remove duplicate evidence.
-* Compress repetitive candles.
-* Select relevant timeframes.
-* Summarize historical context.
-* Avoid sending unchanged data repeatedly.
-* Limit unnecessary news articles.
-* Use structured outputs.
-
-However, Target Analyst may perform deeper research than the real-time Full Analyst because it is a user-triggered analysis rather than a continuously reactive system.
-
----
-
-## FAILURE HANDLING
-
-If one specialist fails:
-
-* Record the failure.
-* Do not fabricate its output.
-* Continue only if the remaining evidence is sufficient.
-* Mark missing evidence.
-* Reduce confidence when appropriate.
+- do not fabricate output
+- record failure
+- retry according to configuration
+- use cached interpretation only when still valid
+- reduce confidence if appropriate
+- or reject the target
 
 If Master AI fails:
 
-```text
-ANALYSIS FAILED
-```
+→ NO VALID TARGET
 
-Do not create a target.
+Never generate a fake target.
 
----
 
-## TESTING
+============================================================
+29. TOKEN MANAGEMENT
+============================================================
+
+Target Analyst is deep, but it must still be efficient.
+
+Use:
+
+- evidence selection
+- deduplication
+- compression
+- relevance ranking
+- cached interpretations
+- changed-evidence detection
+- structured prompts
+- token limits
+
+"All-in analysis" means:
+
+ALL RELEVANT EVIDENCE
+
+not:
+
+ALL RAW DATA.
+
+
+============================================================
+30. TESTING
+============================================================
 
 Test:
 
-1. Target analysis creation
-2. Analysis snapshot
-3. Evidence collection
-4. Evidence timestamp protection
-5. All 8 AI workspaces
-6. Independent provider configuration
-7. Specialist conflicts
-8. Master synthesis
-9. One-target enforcement
-10. Invalid target rejection
-11. Target result persistence
-12. Target chart rendering
-13. Cancel behavior
-14. Target hit detection
-15. Target invalidation
-16. Target expiration
-17. Provider failure
-18. AI timeout
-19. Invalid AI response
-20. Historical reproducibility
+- target job creation
+- snapshot creation
+- evidence selection
+- evidence validation
+- look-ahead protection
+- evidence compression
+- specialist execution
+- specialist failure
+- Master synthesis
+- conflict detection
+- target validation
+- no-valid-target state
+- one-target-only rule
+- target lifecycle
+- target hit
+- invalidation
+- expiration
+- cancellation
+- history preservation
+- provider configuration
+- prompt versioning
+- token limits
+- malformed AI responses
+- stale evidence
+- missing market data
 
----
 
-## PHASE 13 BOUNDARY
-
-Phase 13 produces:
-
-🎯 ONE TARGET
-
-It does NOT produce:
-
-* Local BUY/SELL/STOP signals
-* Full Analyst BUY/SELL/WAIT decisions
-* 🔮 Future scenarios
-* Trade execution
-* Multiple competing targets
-
-The Target Analyst is an independent predictive target system.
-
----
-
-## DELIVERABLES
-
-1. Target Analyst Engine
-2. Analysis Snapshot
-3. Target evidence collector
-4. Target Structure AI
-5. Target Liquidity AI
-6. Target Candle AI
-7. Target Flow AI
-8. Target KTR AI
-9. Target News AI
-10. Target Risk AI
-11. Target Master AI
-12. Independent provider configuration
-13. Target synthesis
-14. One-target validator
-15. Target result model
-16. Target result panel
-17. Target chart object
-18. Target lifecycle manager
-19. Target cancellation
-20. Target hit detection
-21. Target invalidation
-22. Target expiration
-23. Historical target storage
-24. Comprehensive testing
-
----
-
-## COMPLETION CRITERIA
+============================================================
+31. COMPLETION CRITERIA
+============================================================
 
 Phase 13 is complete when:
 
-* [TARGET ANALYST] starts a new analysis.
-* Each click creates one independent analysis job.
-* An immutable analysis snapshot is created.
-* Relevant evidence is collected and validated.
-* All 8 AI workspaces can operate independently.
-* Each workspace can use its own provider/model/API configuration.
-* Specialist conflicts are handled.
-* Master AI selects exactly one target.
-* No target is created when evidence is insufficient.
-* The final target is traceable to its evidence.
-* The target appears on the chart.
-* The target result panel appears only after successful analysis.
-* The panel contains a Cancel Target action.
-* Cancellation removes the active target but preserves history.
-* Targets can be hit, invalidated, or expired.
-* Targets cannot run forever.
-* Target Analyst remains independent from Local Analyst and Full Analyst.
-* No final BUY/SELL/WAIT decision is generated by Target Analyst.
+1. Target Analyst is user-triggered.
+2. One click creates one analysis job.
+3. Snapshot is created correctly.
+4. Relevant evidence is collected.
+5. Evidence is validated.
+6. Look-ahead protection works.
+7. Evidence is compressed.
+8. Eight Target AI workspaces exist.
+9. Each workspace has independent configuration.
+10. Specialist results are structured.
+11. Master AI synthesizes evidence.
+12. Master does not simply majority-vote.
+13. Conflict detection works.
+14. Target validation works.
+15. Exactly ONE target can be produced.
+16. NO VALID TARGET is supported.
+17. Target lifecycle works.
+18. Cancel Target works.
+19. History is preserved.
+20. No BUY/SELL/WAIT decision is generated by Target Analyst.
+21. No automatic trading exists.
+22. Telegram Scanner remains completely independent.
+23. Tests pass.
+24. No fabricated target is produced.
+
+
+============================================================
+32. NEXT PHASE
+============================================================
+
+After Phase 13 is fully implemented and tested:
+
+→ Complete the independent XAUUSD Telegram Scanner project.
+
+After the Telegram Scanner project is completed:
+
+→ Return to AnalystTradingSystem.
+
+Then begin:
+
+PHASE 14 — FULL ANALYST & AI WORKSPACES
+
+
+============================================================
+END OF PHASE 13
+============================================================

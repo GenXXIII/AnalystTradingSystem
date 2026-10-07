@@ -21,7 +21,7 @@ NEWS_AI_REQUESTS_PER_MINUTE=10
 
 The same fields exist for `CANDLE`, `STRUCTURE`, `LIQUIDITY`, `FLOW`, `KTR`, `RISK`, and `MASTER`. A base URL ending in `/chat/completions` is used directly; otherwise the adapter appends `chat/completions`.
 
-General limits use `AI_INTERPRETATION_*`: prompt version, default/maximum lookback, maximum selected evidence, maximum compressed characters, current-context cache minutes, and maximum API page size. Current-time calls reuse unchanged evidence inside that short cache window; explicit historical calls retain the exact analysis timestamp. Changing the prompt version intentionally produces a new cache identity while preserving older interpretations.
+General limits use `AI_INTERPRETATION_*`: prompt version, default/maximum lookback, maximum selected evidence, maximum compressed characters, current-context cache minutes, and maximum API page size. Current-time calls reuse unchanged evidence inside that short cache window; explicit historical calls retain the exact analysis timestamp. Changing the prompt version or any non-secret effective workspace setting produces a new configuration version and cache identity while preserving older interpretations. API keys are deliberately excluded from that persisted fingerprint.
 
 Specialist/type combinations are deliberate: News accepts news, macro, analyst-claim, and geopolitical interpretation modes; Candle, Structure, Liquidity, Flow, and KTR accept technical evidence; Risk accepts geopolitical risk or evidence synthesis; Master accepts evidence synthesis. Unsupported combinations fail before a provider call.
 

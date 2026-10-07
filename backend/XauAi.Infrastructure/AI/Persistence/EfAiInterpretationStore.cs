@@ -38,6 +38,17 @@ internal sealed class EfAiInterpretationStore(XauAiDbContext context) : IAiInter
         }
 
         var ids = records.Select(record => record.Id).ToArray();
+        var economicValues = await context.EconomicEvents.AsNoTracking()
+            .Where(economicEvent => ids.Contains(economicEvent.Id))
+            .Select(economicEvent => new
+            {
+                economicEvent.Id,
+                economicEvent.PreviousValue,
+                economicEvent.ForecastValue,
+                economicEvent.ActualValue,
+                economicEvent.ValueUnit
+            })
+            .ToDictionaryAsync(economicEvent => economicEvent.Id, cancellationToken);
         var clusterRows = await context.EvidenceClusterMembers.AsNoTracking()
             .Where(member => ids.Contains(member.EvidenceId))
             .Select(member => new { member.EvidenceId, member.EvidenceClusterId })
@@ -56,36 +67,45 @@ internal sealed class EfAiInterpretationStore(XauAiDbContext context) : IAiInter
             .GroupBy(relation => relation.EvidenceId)
             .ToDictionary(group => group.Key, group => (IReadOnlyList<AiEvidenceRelation>)[.. group]);
 
-        return [.. records.Select(record => new AiEvidenceCandidate(
-            record.Id,
-            record.EvidenceType,
-            record.SourceType,
-            record.SourceKey,
-            record.ExternalId,
-            record.ContentHash,
-            record.CanonicalSymbol,
-            record.TimeframeCode,
-            record.ObservedAtUtc,
-            record.AvailableAtUtc,
-            record.PublishedAtUtc,
-            record.ValidFromUtc,
-            record.ValidToUtc,
-            record.Title,
-            record.Summary,
-            record.NumericValue,
-            record.OriginalValue,
-            record.Unit ?? "Unknown",
-            record.Direction,
-            record.Importance,
-            record.Category,
-            record.Quality,
-            record.Completeness,
-            record.IsRelevant,
-            record.OriginalSourceUrl,
-            record.MetadataJson,
-            record.UpdatedAtUtc,
-            clusters.GetValueOrDefault(record.Id),
-            RelationsFor(record.Id, relations, relationRows)))];
+        return [.. records.Select(record =>
+        {
+            economicValues.TryGetValue(record.Id, out var economicEvent);
+            return new AiEvidenceCandidate(
+                record.Id,
+                record.EvidenceType,
+                record.SourceType,
+                record.SourceKey,
+                record.ExternalId,
+                record.ContentHash,
+                record.CanonicalSymbol,
+                record.TimeframeCode,
+                record.ObservedAtUtc,
+                record.AvailableAtUtc,
+                record.PublishedAtUtc,
+                record.ValidFromUtc,
+                record.ValidToUtc,
+                record.Title,
+                record.Summary,
+                record.NumericValue,
+                record.OriginalValue,
+                record.Unit ?? economicEvent?.ValueUnit ?? "Unknown",
+                record.Direction,
+                record.Importance,
+                record.Category,
+                record.Quality,
+                record.Completeness,
+                record.IsRelevant,
+                record.OriginalSourceUrl,
+                record.MetadataJson,
+                record.UpdatedAtUtc,
+                clusters.GetValueOrDefault(record.Id),
+                RelationsFor(record.Id, relations, relationRows))
+            {
+                PreviousValue = economicEvent?.PreviousValue,
+                ExpectedValue = economicEvent?.ForecastValue,
+                ActualValue = economicEvent?.ActualValue
+            };
+        })];
     }
 
     public async Task<AiInterpretationResult?> FindCurrentByCacheKeyAsync(
@@ -127,6 +147,7 @@ internal sealed class EfAiInterpretationStore(XauAiDbContext context) : IAiInter
             interpretation.Provider,
             interpretation.Model,
             interpretation.PromptVersion,
+            interpretation.ConfigurationVersion,
             interpretation.EvidenceVersion,
             interpretation.CacheKey,
             interpretation.InputDigest,
@@ -172,6 +193,7 @@ internal sealed class EfAiInterpretationStore(XauAiDbContext context) : IAiInter
             interpretation.Provider,
             interpretation.Model,
             interpretation.PromptVersion,
+            interpretation.ConfigurationVersion,
             interpretation.EvidenceVersion,
             interpretation.CacheKey,
             interpretation.InputDigest,
@@ -374,6 +396,7 @@ internal sealed class EfAiInterpretationStore(XauAiDbContext context) : IAiInter
         string provider,
         string model,
         string promptVersion,
+        string configurationVersion,
         string evidenceVersion,
         string cacheKey,
         string inputDigest,
@@ -395,7 +418,7 @@ internal sealed class EfAiInterpretationStore(XauAiDbContext context) : IAiInter
             ModelVersion = model,
             PromptIdentifier = $"{specialist}.{interpretationType}",
             PromptVersion = promptVersion,
-            AnalysisVersion = "phase11-v2",
+            AnalysisVersion = configurationVersion,
             ApplicationVersion = "1.0.0",
             InputDigest = inputDigest,
             CacheKey = cacheKey,
@@ -479,6 +502,7 @@ internal sealed class EfAiInterpretationStore(XauAiDbContext context) : IAiInter
                 item.Provider,
                 item.Model,
                 item.PromptVersion,
+                item.AnalysisVersion,
                 item.EvidenceVersion,
                 item.AnalysisTimeUtc,
                 item.EvidenceUpdatedAtUtc,

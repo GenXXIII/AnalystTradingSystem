@@ -4,6 +4,7 @@ using XauAi.Application.AI;
 using XauAi.Application.Analysts;
 using XauAi.Application.Evidence;
 using XauAi.Application.MarketData;
+using XauAi.Application.LocalAnalysis;
 using XauAi.Application.News;
 using XauAi.Application.EconomicData;
 using XauAi.Application.SystemStatus;
@@ -18,6 +19,7 @@ public static class DependencyInjection
         services.AddSingleton(TimeProvider.System);
         services.TryAddSingleton(new MarketDataPipelineSettings());
         services.TryAddSingleton(new TechnicalAnalysisSettings());
+        services.TryAddSingleton(new LocalAnalystSettings());
         services.TryAddSingleton(new NewsSettings());
         services.TryAddSingleton(new EconomicDataSettings());
         services.TryAddSingleton(new AnalystSettings());
@@ -36,6 +38,8 @@ public static class DependencyInjection
         services.AddScoped<IPriceActionAnalyzer, PriceActionAnalyzer>();
         services.AddScoped<IVolatilityAnalyzer, VolatilityAnalyzer>();
         services.AddScoped<ITechnicalAnalysisService, TechnicalAnalysisService>();
+        services.AddSingleton<ILocalSignalEngine, LocalSignalEngine>();
+        services.AddScoped<ILocalAnalystService, LocalAnalystService>();
         services.AddScoped<INewsRelevanceClassifier, NewsRelevanceClassifier>();
         services.AddScoped<INewsArticleNormalizer, NewsArticleNormalizer>();
         services.AddScoped<INewsCollectionService, NewsCollectionService>();

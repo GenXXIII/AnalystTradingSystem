@@ -64,6 +64,9 @@ internal sealed class SupportResistanceAnalyzer : ISupportResistanceAnalyzer
             strength,
             swings.Count,
             [timeframe],
-            currentPrice == 0m ? 0m : ((center - currentPrice) / currentPrice) * 100m);
+            currentPrice == 0m ? 0m : ((center - currentPrice) / currentPrice) * 100m,
+            "SwingCluster",
+            swings.Min(swing => swing.CandleTimeUtc),
+            "Active");
     }
 }

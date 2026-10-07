@@ -3,6 +3,7 @@ import type { ApiSuccessResponse } from "@/types/api";
 import type {
   MarketDataPipelineResult,
   MarketDataPipelineStatus,
+  MarketDataSourceComparison,
   StoredMarketCandle,
 } from "@/types/market";
 
@@ -40,6 +41,16 @@ export async function getMarketPipelineStatus(
   const query = new URLSearchParams({ timeframe });
   const response = await apiClient.get<ApiSuccessResponse<MarketDataPipelineStatus>>(
     `/api/market-data/XAUUSD/status?${query.toString()}`,
+  );
+  return response.data;
+}
+
+export async function getMarketSourceComparison(
+  timeframe: MarketTimeframeCode,
+): Promise<MarketDataSourceComparison> {
+  const query = new URLSearchParams({ timeframe, limit: "100" });
+  const response = await apiClient.get<ApiSuccessResponse<MarketDataSourceComparison>>(
+    `/api/market-data/XAUUSD/source-comparison?${query.toString()}`,
   );
   return response.data;
 }

@@ -5,6 +5,7 @@ import { marketTimeframes, type MarketTimeframeCode } from "@/features/market/ap
 import { useMarketTerminal } from "@/hooks/use-market-terminal";
 import { useNewsModule } from "@/hooks/use-news-module";
 import { TradingChart } from "@/components/trading-chart";
+import { FullAnalystWorkspace } from "@/components/full-analyst-workspace";
 import type { LocalSignalSnapshot, LocalSignalState } from "@/features/analysis/api/get-local-analyst";
 import { getActiveTradingSessions, getXauUsdMarketSession } from "@/lib/market/xauusd-session";
 import type { MultiTimeframeAnalysis, TechnicalAnalysis } from "@/types/analysis";
@@ -27,6 +28,7 @@ const timeframeLabels: Record<MarketTimeframeCode, string> = {
   M1: "M1", M5: "M5", M15: "M15", M30: "M30", H1: "1H", H4: "4H", D1: "1D",
 };
 const moduleLaunchers = [
+  { key: "full", eyebrow: "AI workspace", title: "Full Analyst" },
   { key: "analysis", eyebrow: "Analysis", title: "Application-owned engine" },
   { key: "news", eyebrow: "Intelligence", title: "News" },
   { key: "candles", eyebrow: "Market data", title: "Candle feed" },
@@ -78,6 +80,8 @@ export function MarketTerminal() {
   const activeModuleDefinition = moduleLaunchers.find((item) => item.key === activeModule) ?? null;
   const activeModuleMessage = activeModule === "news"
     ? news.error ?? news.status?.provider.message ?? "Latest normalized news from SQL storage."
+    : activeModule === "full"
+      ? "Independent evidence synthesis · BUY, SELL, or WAIT · analysis only."
     : activeModule === "candles"
       ? `${terminal.timeframe} · ${integer.format(terminal.candles.length)} candles loaded from SQL storage.`
       : terminal.error ?? terminal.analysisError ?? "Module data is live and read only.";
@@ -145,7 +149,7 @@ export function MarketTerminal() {
         <footer className="status-bar">
           <span><StatusDot online={Boolean(terminal.provider?.connected)} />System {systemState}</span>
           <span>SQL Server · source of truth</span><span>AllTick live · Twelve Data reference</span>
-          <span className="status-right">Phase 6 · Technical analysis engine</span>
+          <span className="status-right">Phase 14 · Full Analyst workspace</span>
         </footer>
       </section>
 
@@ -157,6 +161,7 @@ export function MarketTerminal() {
               <button type="button" onClick={() => setActiveModule(null)} autoFocus aria-label={`Close ${activeModuleDefinition.title}`}>×</button>
             </header>
             <div className={`control-modal-body module-modal-body module-${activeModule}`}>
+              {activeModule === "full" ? <FullAnalystWorkspace timeframe={terminal.timeframe} /> : null}
               {activeModule === "analysis" ? (
                 <TechnicalAnalysisPanel
                   analysis={terminal.analysis?.timeframe === terminal.timeframe ? terminal.analysis : null}

@@ -8,6 +8,7 @@ using XauAi.Application.TechnicalAnalysis;
 using XauAi.Application.AI;
 using XauAi.Application.LocalAnalysis;
 using XauAi.Application.TargetAnalysis;
+using XauAi.Application.FullAnalysis;
 
 namespace XauAi.Api.Middleware;
 
@@ -165,6 +166,22 @@ public sealed class ExceptionHandlingMiddleware(
                 exception.SafeMessage,
                 context.TraceIdentifier));
         }
+        catch (FullAnalysisException exception) when (!context.Response.HasStarted)
+        {
+            logger.LogWarning(
+                exception,
+                "Full analysis request failed with code {ErrorCode} for {Method} {Path}",
+                exception.Code,
+                context.Request.Method,
+                context.Request.Path);
+
+            context.Response.Clear();
+            context.Response.StatusCode = FullAnalysisStatusCode(exception.Code);
+            await context.Response.WriteAsJsonAsync(ApiErrorResponse.Create(
+                exception.Code,
+                exception.SafeMessage,
+                context.TraceIdentifier));
+        }
         catch (BadHttpRequestException exception) when (!context.Response.HasStarted)
         {
             logger.LogWarning(
@@ -317,6 +334,27 @@ public sealed class ExceptionHandlingMiddleware(
             or TargetAnalysisErrorCodes.AuthenticationFailed
             or TargetAnalysisErrorCodes.TokenLimit
             or TargetAnalysisErrorCodes.Unavailable => StatusCodes.Status503ServiceUnavailable,
+        _ => StatusCodes.Status500InternalServerError
+    };
+
+    private static int FullAnalysisStatusCode(string code) => code switch
+    {
+        FullAnalysisErrorCodes.InvalidRequest => StatusCodes.Status400BadRequest,
+        FullAnalysisErrorCodes.NotFound => StatusCodes.Status404NotFound,
+        FullAnalysisErrorCodes.InvalidState => StatusCodes.Status409Conflict,
+        FullAnalysisErrorCodes.RateLimited => StatusCodes.Status429TooManyRequests,
+        FullAnalysisErrorCodes.Timeout => StatusCodes.Status504GatewayTimeout,
+        FullAnalysisErrorCodes.InvalidResponse => StatusCodes.Status502BadGateway,
+        FullAnalysisErrorCodes.MissingMarketData
+            or FullAnalysisErrorCodes.NoEvidence => StatusCodes.Status422UnprocessableEntity,
+        FullAnalysisErrorCodes.Disabled
+            or FullAnalysisErrorCodes.DatabaseDisabled
+            or FullAnalysisErrorCodes.WorkspaceDisabled
+            or FullAnalysisErrorCodes.WorkspaceNotConfigured
+            or FullAnalysisErrorCodes.ProviderNotSupported
+            or FullAnalysisErrorCodes.AuthenticationFailed
+            or FullAnalysisErrorCodes.TokenLimit
+            or FullAnalysisErrorCodes.Unavailable => StatusCodes.Status503ServiceUnavailable,
         _ => StatusCodes.Status500InternalServerError
     };
 }

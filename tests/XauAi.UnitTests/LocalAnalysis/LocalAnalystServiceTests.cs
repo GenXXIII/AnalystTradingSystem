@@ -112,7 +112,7 @@ public sealed class LocalAnalystServiceTests
             candle.Close, 5m, 6m, 0.833333m,
             "BullishStructure", "NoConfirmedSweep", "BullishContextConfirmed", "Bullish", "SupportReaction", "Normal",
             candle.Close - 2m, candle.Close + 4m, null, candle.CloseTimeUtc.AddHours(1),
-            [new LocalSignalCondition("Trend", "Bullish", true, false, 1m, ["fixture"]) ]);
+            [new LocalSignalCondition("Trend", "Bullish", true, false, 1m, ["fixture"])]);
 
     private static LocalSignalSnapshot Snapshot(
         StoredMarketCandle candle,

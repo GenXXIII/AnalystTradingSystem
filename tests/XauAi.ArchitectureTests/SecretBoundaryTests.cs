@@ -22,7 +22,15 @@ public sealed class SecretBoundaryTests
         "FLOW_AI_API_KEY",
         "KTR_AI_API_KEY",
         "RISK_AI_API_KEY",
-        "MASTER_AI_API_KEY"
+        "MASTER_AI_API_KEY",
+        "FULL_STRUCTURE_AI_API_KEY",
+        "FULL_LIQUIDITY_AI_API_KEY",
+        "FULL_CANDLE_AI_API_KEY",
+        "FULL_FLOW_AI_API_KEY",
+        "FULL_KTR_AI_API_KEY",
+        "FULL_NEWS_AI_API_KEY",
+        "FULL_RISK_AI_API_KEY",
+        "FULL_MASTER_AI_API_KEY"
     ];
 
     [Fact]
@@ -80,6 +88,14 @@ public sealed class SecretBoundaryTests
         Assert.Contains("KTR_AI_API_KEY", values.Keys);
         Assert.Contains("RISK_AI_API_KEY", values.Keys);
         Assert.Contains("MASTER_AI_API_KEY", values.Keys);
+        Assert.Contains("FULL_STRUCTURE_AI_API_KEY", values.Keys);
+        Assert.Contains("FULL_LIQUIDITY_AI_API_KEY", values.Keys);
+        Assert.Contains("FULL_CANDLE_AI_API_KEY", values.Keys);
+        Assert.Contains("FULL_FLOW_AI_API_KEY", values.Keys);
+        Assert.Contains("FULL_KTR_AI_API_KEY", values.Keys);
+        Assert.Contains("FULL_NEWS_AI_API_KEY", values.Keys);
+        Assert.Contains("FULL_RISK_AI_API_KEY", values.Keys);
+        Assert.Contains("FULL_MASTER_AI_API_KEY", values.Keys);
         Assert.Contains("ALLTICK_TOKEN", values.Keys);
         Assert.Contains("TWELVE_DATA_API_KEY", values.Keys);
         Assert.Contains("DATABASE_CONNECTION_STRING", values.Keys);

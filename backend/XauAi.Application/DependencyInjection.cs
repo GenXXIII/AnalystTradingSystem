@@ -10,6 +10,7 @@ using XauAi.Application.EconomicData;
 using XauAi.Application.SystemStatus;
 using XauAi.Application.TechnicalAnalysis;
 using XauAi.Application.TargetAnalysis;
+using XauAi.Application.FullAnalysis;
 
 namespace XauAi.Application;
 
@@ -27,6 +28,7 @@ public static class DependencyInjection
         services.TryAddSingleton(new EvidenceSettings());
         services.TryAddSingleton(new AiInterpretationSettings());
         services.TryAddSingleton(new TargetAnalystSettings());
+        services.TryAddSingleton(new FullAnalystSettings());
         services.AddSingleton<IMarketSessionCalendar, DefaultMarketSessionCalendar>();
         services.AddScoped<IPlatformStatusService, PlatformStatusService>();
         services.AddScoped<IMarketDataSynchronizationService, MarketDataSynchronizationService>();
@@ -110,6 +112,11 @@ public static class DependencyInjection
         services.AddSingleton<ITargetAiRequestGate, TargetAiRequestGate>();
         services.AddScoped<ITargetWorkspaceRunner, TargetWorkspaceRunner>();
         services.AddScoped<ITargetAnalystService, TargetAnalystService>();
+        services.AddSingleton<IFullAiResponseValidator, FullAiResponseValidator>();
+        services.AddSingleton<IFullResultValidator, FullResultValidator>();
+        services.AddSingleton<IFullAiRequestGate, FullAiRequestGate>();
+        services.AddSingleton<IFullWorkspaceRunner, FullWorkspaceRunner>();
+        services.AddScoped<IFullAnalystService, FullAnalystService>();
 
         return services;
     }

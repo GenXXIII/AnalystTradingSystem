@@ -80,6 +80,7 @@ app.MapMarketDataEndpoints();
 app.MapTechnicalAnalysisEndpoints();
 app.MapLocalAnalystEndpoints();
 app.MapTargetAnalystEndpoints();
+app.MapFullAnalystEndpoints();
 app.MapNewsEndpoints();
 app.MapEconomicDataEndpoints();
 app.MapAnalystDataEndpoints();

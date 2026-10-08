@@ -11,6 +11,8 @@ using XauAi.Domain.ReferenceData;
 using XauAi.Infrastructure.Persistence;
 using XauAi.Domain.TargetAnalysis;
 using DomainTargetAnalysis = XauAi.Domain.TargetAnalysis.TargetAnalysis;
+using XauAi.Domain.FullAnalysis;
+using DomainFullAnalysis = XauAi.Domain.FullAnalysis.FullAnalysis;
 
 namespace XauAi.UnitTests.Persistence;
 
@@ -39,7 +41,8 @@ public sealed class PersistenceModelTests
             "Strategies", "StrategyVersions", "StrategyEvaluations", "StrategyEvaluationEvidence",
             "TradingSignals", "TradingSignalEvidence", "SignalOutcomes", "BacktestRuns",
             "BacktestTrades", "PerformanceStatistics", "TargetAnalyses", "TargetSpecialistResults",
-            "TargetAnalysisEvidence", "TargetAnalysisLifecycleEvents"
+            "TargetAnalysisEvidence", "TargetAnalysisLifecycleEvents", "FullAnalyses",
+            "FullAnalysisLifecycleEvents"
         };
 
         Assert.True(tableNames.Count >= expectedTables.Length);
@@ -59,6 +62,22 @@ public sealed class PersistenceModelTests
         Assert.Equal("decimal(19,8)", target?.FindProperty(nameof(DomainTargetAnalysis.TargetPrice))?.GetColumnType());
         Assert.Equal("decimal(9,6)", target?.FindProperty(nameof(DomainTargetAnalysis.Confidence))?.GetColumnType());
         Assert.Equal("nvarchar(max)", target?.FindProperty(nameof(DomainTargetAnalysis.SnapshotJson))?.GetColumnType());
+    }
+
+    [Fact]
+    public void Full_analysis_model_preserves_snapshot_workspace_outputs_and_lifecycle_history()
+    {
+        AssertIndexes<DomainFullAnalysis>(
+            "IX_FullAnalyses_Symbol_Status_AnalysisTimeUtc",
+            "IX_FullAnalyses_Instrument_Timeframe_AnalysisTimeUtc",
+            "IX_FullAnalyses_SnapshotHash");
+        AssertIndexes<FullAnalysisLifecycleEvent>("IX_FullAnalysisLifecycleEvents_Analysis_Time");
+
+        var full = _dbContext.GetService<IDesignTimeModel>().Model.FindEntityType(typeof(DomainFullAnalysis));
+        Assert.Equal("decimal(19,8)", full?.FindProperty(nameof(DomainFullAnalysis.CurrentPrice))?.GetColumnType());
+        Assert.Equal("decimal(9,6)", full?.FindProperty(nameof(DomainFullAnalysis.Confidence))?.GetColumnType());
+        Assert.Equal("nvarchar(max)", full?.FindProperty(nameof(DomainFullAnalysis.SnapshotJson))?.GetColumnType());
+        Assert.Equal("nvarchar(max)", full?.FindProperty(nameof(DomainFullAnalysis.WorkspaceResultsJson))?.GetColumnType());
     }
 
     [Fact]

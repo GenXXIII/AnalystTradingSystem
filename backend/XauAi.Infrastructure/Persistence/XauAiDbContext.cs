@@ -11,7 +11,9 @@ using XauAi.Domain.Signals;
 using XauAi.Domain.Statistics;
 using XauAi.Domain.Strategies;
 using XauAi.Domain.TargetAnalysis;
+using XauAi.Domain.FullAnalysis;
 using DomainTargetAnalysis = XauAi.Domain.TargetAnalysis.TargetAnalysis;
+using DomainFullAnalysis = XauAi.Domain.FullAnalysis.FullAnalysis;
 
 namespace XauAi.Infrastructure.Persistence;
 
@@ -84,6 +86,10 @@ public sealed class XauAiDbContext(DbContextOptions<XauAiDbContext> options) : D
     public DbSet<TargetAnalysisEvidence> TargetAnalysisEvidence => Set<TargetAnalysisEvidence>();
 
     public DbSet<TargetAnalysisLifecycleEvent> TargetAnalysisLifecycleEvents => Set<TargetAnalysisLifecycleEvent>();
+
+    public DbSet<DomainFullAnalysis> FullAnalyses => Set<DomainFullAnalysis>();
+
+    public DbSet<FullAnalysisLifecycleEvent> FullAnalysisLifecycleEvents => Set<FullAnalysisLifecycleEvent>();
 
     public DbSet<Strategy> Strategies => Set<Strategy>();
 

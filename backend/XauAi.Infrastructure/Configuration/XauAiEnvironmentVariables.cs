@@ -222,7 +222,22 @@ public static class XauAiEnvironmentVariables
             ["TARGET_ANALYST_MAXIMUM_VALIDITY_MINUTES"] = "TargetAnalyst:MaximumValidityMinutes",
             ["TARGET_ANALYST_MONITOR_INTERVAL_SECONDS"] = "TargetAnalyst:MonitorIntervalSeconds",
             ["TARGET_ANALYST_MAXIMUM_PAGE_SIZE"] = "TargetAnalyst:MaximumPageSize",
-            ["TARGET_ANALYST_CONFIGURATION_VERSION"] = "TargetAnalyst:ConfigurationVersion"
+            ["TARGET_ANALYST_CONFIGURATION_VERSION"] = "TargetAnalyst:ConfigurationVersion",
+            ["FULL_ANALYST_ENABLED"] = "FullAnalyst:Enabled",
+            ["FULL_ANALYST_SYMBOL"] = "FullAnalyst:Symbol",
+            ["FULL_ANALYST_TIMEFRAMES"] = "FullAnalyst:Timeframes",
+            ["FULL_ANALYST_EVIDENCE_LOOKBACK_HOURS"] = "FullAnalyst:EvidenceLookbackHours",
+            ["FULL_ANALYST_MAXIMUM_EVIDENCE_ITEMS_PER_WORKSPACE"] = "FullAnalyst:MaximumEvidenceItemsPerWorkspace",
+            ["FULL_ANALYST_MAXIMUM_COMPRESSED_CHARACTERS"] = "FullAnalyst:MaximumCompressedCharacters",
+            ["FULL_ANALYST_MINIMUM_MARKET_TIMEFRAMES"] = "FullAnalyst:MinimumMarketTimeframes",
+            ["FULL_ANALYST_STALE_AFTER_INTERVALS"] = "FullAnalyst:StaleAfterIntervals",
+            ["FULL_ANALYST_MINIMUM_CONFIDENCE"] = "FullAnalyst:MinimumConfidence",
+            ["FULL_ANALYST_DEFAULT_VALIDITY_MINUTES"] = "FullAnalyst:DefaultValidityMinutes",
+            ["FULL_ANALYST_MAXIMUM_VALIDITY_MINUTES"] = "FullAnalyst:MaximumValidityMinutes",
+            ["FULL_ANALYST_CACHE_MINUTES"] = "FullAnalyst:CacheMinutes",
+            ["FULL_ANALYST_MONITOR_INTERVAL_SECONDS"] = "FullAnalyst:MonitorIntervalSeconds",
+            ["FULL_ANALYST_MAXIMUM_PAGE_SIZE"] = "FullAnalyst:MaximumPageSize",
+            ["FULL_ANALYST_CONFIGURATION_VERSION"] = "FullAnalyst:ConfigurationVersion"
         };
 
     public static IConfigurationBuilder AddXauAiEnvironmentVariables(
@@ -261,6 +276,14 @@ public static class XauAiEnvironmentVariables
         AddTargetApiKey(values, readVariable, "TARGET_NEWS", "News");
         AddTargetApiKey(values, readVariable, "TARGET_RISK", "Risk");
         AddTargetApiKey(values, readVariable, "TARGET_MASTER", "Master");
+        AddFullWorkspace(values, readVariable, "FULL_STRUCTURE", "Structure");
+        AddFullWorkspace(values, readVariable, "FULL_LIQUIDITY", "Liquidity");
+        AddFullWorkspace(values, readVariable, "FULL_CANDLE", "Candle");
+        AddFullWorkspace(values, readVariable, "FULL_FLOW", "Flow");
+        AddFullWorkspace(values, readVariable, "FULL_KTR", "Ktr");
+        AddFullWorkspace(values, readVariable, "FULL_NEWS", "News");
+        AddFullWorkspace(values, readVariable, "FULL_RISK", "Risk");
+        AddFullWorkspace(values, readVariable, "FULL_MASTER", "Master");
 
         AddFirstPresent(values, "AI:ApiKey", readVariable, "AI_API_KEY", "OPENAI_API_KEY");
         AddFirstPresent(values, "AI:Model", readVariable, "AI_MODEL", "OPENAI_MODEL");
@@ -373,6 +396,38 @@ public static class XauAiEnvironmentVariables
             "OPENROUTER_API_KEY",
             "AI_API_KEY",
             "OPENAI_API_KEY");
+
+    private static void AddFullWorkspace(
+        Dictionary<string, string?> values,
+        Func<string, string?> readVariable,
+        string environmentPrefix,
+        string configurationName)
+    {
+        var fields = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["ENABLED"] = "Enabled",
+            ["PROVIDER"] = "Provider",
+            ["ADAPTER"] = "Adapter",
+            ["REQUIRES_API_KEY"] = "RequiresApiKey",
+            ["API_KEY"] = "ApiKey",
+            ["MODEL"] = "Model",
+            ["BASE_URL"] = "BaseUrl",
+            ["TEMPERATURE"] = "Temperature",
+            ["TIMEOUT_SECONDS"] = "TimeoutSeconds",
+            ["MAX_OUTPUT_TOKENS"] = "MaxOutputTokens",
+            ["MAX_RETRIES"] = "MaxRetries",
+            ["REQUESTS_PER_MINUTE"] = "RequestsPerMinute",
+            ["PROMPT_VERSION"] = "PromptVersion",
+            ["CONFIGURATION_VERSION"] = "ConfigurationVersion"
+        };
+        foreach (var field in fields)
+        {
+            AddIfPresent(
+                values,
+                $"FullAiWorkspaces:{configurationName}:{field.Value}",
+                readVariable($"{environmentPrefix}_AI_{field.Key}"));
+        }
+    }
 
     private static void AddIfPresent(
         Dictionary<string, string?> values,

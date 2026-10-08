@@ -318,6 +318,8 @@ public sealed class FullWorkspaceCatalog(IEnumerable<FullWorkspaceConfiguration>
                 FullAnalysisErrorCodes.WorkspaceNotConfigured,
                 $"The {workspace} Full AI workspace is not configured.");
 
+    internal IReadOnlyList<FullWorkspaceConfiguration> Configurations => [.. configurations.Values];
+
     public IReadOnlyList<FullWorkspaceConfigurationView> GetSafeViews() =>
         [.. configurations.Values.OrderBy(configuration => configuration.Workspace)
             .Select(configuration => new FullWorkspaceConfigurationView(

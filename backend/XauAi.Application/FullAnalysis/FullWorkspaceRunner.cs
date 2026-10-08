@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+using XauAi.Application.AI;
 
 namespace XauAi.Application.FullAnalysis;
 
@@ -8,7 +9,7 @@ internal sealed class FullWorkspaceRunner(
     FullWorkspaceCatalog catalog,
     IFullAiProviderFactory providerFactory,
     IFullAiResponseValidator responseValidator,
-    IFullAiRequestGate requestGate,
+    IScopedAiProviderRequestGate requestGate,
     FullAnalystSettings settings,
     TimeProvider timeProvider) : IFullWorkspaceRunner
 {
@@ -65,7 +66,13 @@ internal sealed class FullWorkspaceRunner(
         string outputJson = "{}";
         try
         {
-            await requestGate.WaitAsync(request.Workspace, configuration.RequestsPerMinute, cancellationToken);
+            await requestGate.WaitAsync(
+                "Future",
+                configuration.Provider,
+                configuration.BaseUrl,
+                configuration.ApiKey,
+                configuration.RequestsPerMinute,
+                cancellationToken);
             var completion = await providerFactory.Create(configuration.Adapter)
                 .AnalyzeAsync(request, configuration, cancellationToken);
             outputJson = completion.Json;
@@ -142,44 +149,4 @@ internal sealed class FullWorkspaceRunner(
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
     private sealed record CachedResult(FullWorkspaceRunResult Result, DateTimeOffset StoredAtUtc);
-}
-
-internal sealed class FullAiRequestGate(TimeProvider timeProvider) : IFullAiRequestGate
-{
-    private readonly ConcurrentDictionary<FullWorkspace, GateState> states = new();
-
-    public async Task WaitAsync(
-        FullWorkspace workspace,
-        int requestsPerMinute,
-        CancellationToken cancellationToken = default)
-    {
-        if (requestsPerMinute <= 0)
-        {
-            return;
-        }
-
-        var state = states.GetOrAdd(workspace, static _ => new GateState());
-        await state.Lock.WaitAsync(cancellationToken);
-        try
-        {
-            var interval = TimeSpan.FromMinutes(1d / requestsPerMinute);
-            var wait = state.LastRequestUtc + interval - timeProvider.GetUtcNow();
-            if (wait > TimeSpan.Zero)
-            {
-                await Task.Delay(wait, timeProvider, cancellationToken);
-            }
-
-            state.LastRequestUtc = timeProvider.GetUtcNow();
-        }
-        finally
-        {
-            state.Lock.Release();
-        }
-    }
-
-    private sealed class GateState
-    {
-        public SemaphoreSlim Lock { get; } = new(1, 1);
-        public DateTimeOffset LastRequestUtc { get; set; } = DateTimeOffset.MinValue;
-    }
 }

@@ -1,4 +1,5 @@
 import type { MarketTimeframeCode } from "@/features/market/api/get-pipeline-data";
+import type { AiProviderAccountStatus } from "@/features/analysis/api/ai-provider-status";
 import { apiClient } from "@/lib/api/client";
 import type { ApiSuccessResponse } from "@/types/api";
 
@@ -127,6 +128,13 @@ export async function getTargetHistory(pageSize = 12): Promise<PagedTargetAnalys
 export async function getTargetWorkspaceConfiguration(): Promise<TargetWorkspaceConfiguration[]> {
   const response = await apiClient.get<ApiSuccessResponse<TargetWorkspaceConfiguration[]>>(
     "/api/target-analyst/configuration",
+  );
+  return response.data;
+}
+
+export async function getTargetProviderStatuses(): Promise<AiProviderAccountStatus[]> {
+  const response = await apiClient.get<ApiSuccessResponse<AiProviderAccountStatus[]>>(
+    "/api/target-analyst/provider-status",
   );
   return response.data;
 }

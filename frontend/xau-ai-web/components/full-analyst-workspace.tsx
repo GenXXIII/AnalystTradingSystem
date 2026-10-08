@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { AiProviderAccountStatus } from "@/features/analysis/api/ai-provider-status";
 import type { MarketTimeframeCode } from "@/features/market/api/get-pipeline-data";
-import type { TargetAnalysisResult } from "@/features/target-analysis/api/target-analyst";
 import {
   cancelFullAnalysis,
   createFullAnalysis,
   getActiveFullAnalyses,
   getFullAnalysisHistory,
+  getFullProviderStatuses,
   getFullWorkspaceConfiguration,
   type FullAnalysisResult,
   type FullDecision,
@@ -26,14 +27,14 @@ const utcDate = new Intl.DateTimeFormat("en-GB", {
   timeZoneName: "short",
 });
 
-export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: Readonly<{
+export function FullAnalystWorkspace({ timeframe, onResultChange }: Readonly<{
   timeframe: MarketTimeframeCode;
-  targetPlan: TargetAnalysisResult | null;
   onResultChange?: (result: FullAnalysisResult | null) => void;
 }>) {
   const [result, setResult] = useState<FullAnalysisResult | null>(null);
   const [history, setHistory] = useState<FullAnalysisResult[]>([]);
   const [configuration, setConfiguration] = useState<FullWorkspaceConfiguration[]>([]);
+  const [providerStatuses, setProviderStatuses] = useState<AiProviderAccountStatus[]>([]);
   const [activeResultId, setActiveResultId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
@@ -45,15 +46,17 @@ export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: 
       setLoading(true);
       setError(null);
       try {
-        const [active, recent, workspaces] = await Promise.all([
+        const [active, recent, workspaces, providers] = await Promise.all([
           getActiveFullAnalyses(),
           getFullAnalysisHistory(),
           getFullWorkspaceConfiguration(),
+          getFullProviderStatuses(),
         ]);
         if (!cancelled) {
           const selected = active.find((item) => item.timeframe === timeframe) ?? active[0] ?? null;
           setHistory(recent.items);
           setConfiguration(workspaces);
+          setProviderStatuses(providers);
           setActiveResultId(selected?.id ?? null);
           setResult(selected);
           onResultChange?.(selected);
@@ -72,8 +75,9 @@ export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: 
     let cancelled = false;
     const refreshActive = async () => {
       try {
-        const active = await getActiveFullAnalyses();
+        const [active, providers] = await Promise.all([getActiveFullAnalyses(), getFullProviderStatuses()]);
         if (cancelled) return;
+        setProviderStatuses(providers);
         const selected = active.find((item) => item.timeframe === timeframe) ?? active[0] ?? null;
         setActiveResultId(selected?.id ?? null);
         if (selected) {
@@ -95,7 +99,8 @@ export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: 
   }, [activeResultId, onResultChange, timeframe]);
 
   const configured = configuration.filter((workspace) => workspace.enabled && workspace.hasApiKey).length;
-  const canRun = !loading && !running && configured === 8 && activeResultId === null;
+  const blockedProvider = providerStatuses.find((status) => !status.canGenerate) ?? null;
+  const canRun = !loading && !running && configured === 8 && activeResultId === null && blockedProvider === null;
 
   async function runAnalysis() {
     setRunning(true);
@@ -130,8 +135,6 @@ export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: 
     }
   }
 
-  const targetTakeProfit = compatibleTargetPrice(result, targetPlan);
-
   return (
     <section className="full-analyst-workspace">
       <header className="full-analyst-toolbar">
@@ -141,13 +144,14 @@ export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: 
           <small>{configured}/8 Future AI workspaces configured</small>
         </div>
         <button type="button" className="primary-action" onClick={runAnalysis} disabled={!canRun}>
-          {running ? "Analyzing…" : activeResultId ? "Active future loaded" : "Generate Future"}
+          {running ? "Analyzing…" : activeResultId ? "Active future loaded" : providerButtonLabel(blockedProvider, "Generate Future")}
         </button>
       </header>
 
       {configured < 8 && !loading ? (
         <p className="full-analyst-warning">Enable and configure all eight independent Future AI workspaces before requesting analysis.</p>
       ) : null}
+      {blockedProvider ? <p className="full-analyst-warning" role="status">{blockedProvider.message}</p> : null}
       {error ? <p className="terminal-error" role="alert">{error}</p> : null}
 
       {result ? (
@@ -165,7 +169,7 @@ export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: 
           <div className="full-result-grid">
             <Metric label="Signal" value={result.decision.toUpperCase()} />
             <Metric label="Entry / current" value={formatPrice(result.currentPrice)} />
-            <Metric label="Take profit (Target)" value={targetTakeProfit === null ? "Run Target Analyst" : formatPrice(targetTakeProfit)} />
+            <Metric label="Take profit (TP)" value="Not part of Future" />
             <Metric label="Stop loss (SL)" value={formatPrice(result.invalidation?.price ?? null)} />
             <Metric label="Confidence" value={formatRatio(result.confidence)} />
             <Metric label="Valid until" value={formatDate(result.validUntilUtc)} />
@@ -198,7 +202,7 @@ export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: 
 
           {result.status === "Active" ? (
             <footer className="full-result-actions">
-              <span>Direction is independent · Target Analyst supplies TP · no automatic trading</span>
+              <span>Independent direction only · no target sharing · no automatic trading</span>
               <button type="button" onClick={cancelAnalysis} disabled={running}>Cancel Future</button>
             </footer>
           ) : null}
@@ -230,17 +234,6 @@ export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: 
 
 function Metric({ label, value }: Readonly<{ label: string; value: string }>) {
   return <div><span>{label}</span><strong>{value}</strong></div>;
-}
-
-function compatibleTargetPrice(
-  future: FullAnalysisResult | null,
-  target: TargetAnalysisResult | null,
-): number | null {
-  if (!future || !target || target.status !== "Active" || target.timeframe !== future.timeframe
-    || target.targetPrice === null || target.currentPrice === null) return null;
-  if (future.decision === "Buy" && target.targetPrice > target.currentPrice) return target.targetPrice;
-  if (future.decision === "Sell" && target.targetPrice < target.currentPrice) return target.targetPrice;
-  return null;
 }
 
 function decisionSymbol(decision: FullDecision): string {
@@ -275,4 +268,9 @@ function formatDate(value: string | null): string {
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : "Future Analyst request failed.";
+}
+
+function providerButtonLabel(status: AiProviderAccountStatus | null, fallback: string): string {
+  if (!status) return fallback;
+  return status.state === "QuotaExhausted" ? "Daily quota exhausted" : "AI provider unavailable";
 }

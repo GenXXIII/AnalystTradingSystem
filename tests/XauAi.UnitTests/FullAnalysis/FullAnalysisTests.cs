@@ -99,7 +99,7 @@ public sealed class FullAnalysisTests
             new FullWorkspaceCatalog([configuration]),
             new StubFactory(provider),
             new FullAiResponseValidator(),
-            new FullAiRequestGate(TimeProvider.System),
+            new XauAi.Application.AI.ScopedAiProviderRequestGate(TimeProvider.System),
             new FullAnalystSettings { CacheMinutes = 5 },
             TimeProvider.System);
         var request = new FullAiRequest(

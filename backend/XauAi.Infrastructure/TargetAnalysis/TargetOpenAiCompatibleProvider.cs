@@ -299,7 +299,6 @@ internal sealed class TargetOpenAiCompatibleProvider(
 
     private static bool IsTransient(HttpStatusCode statusCode) =>
         statusCode == HttpStatusCode.RequestTimeout
-        || statusCode == HttpStatusCode.TooManyRequests
         || (int)statusCode >= 500;
 
     private static TargetAnalysisException Failure(HttpStatusCode statusCode) => statusCode switch

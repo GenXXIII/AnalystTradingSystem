@@ -1,4 +1,5 @@
 import type { MarketTimeframeCode } from "@/features/market/api/get-pipeline-data";
+import type { AiProviderAccountStatus } from "@/features/analysis/api/ai-provider-status";
 import { apiClient } from "@/lib/api/client";
 import type { ApiSuccessResponse } from "@/types/api";
 
@@ -118,6 +119,13 @@ export async function getFullAnalysisHistory(pageSize = 12): Promise<PagedFullAn
 export async function getFullWorkspaceConfiguration(): Promise<FullWorkspaceConfiguration[]> {
   const response = await apiClient.get<ApiSuccessResponse<FullWorkspaceConfiguration[]>>(
     "/api/full-analyst/configuration",
+  );
+  return response.data;
+}
+
+export async function getFullProviderStatuses(): Promise<AiProviderAccountStatus[]> {
+  const response = await apiClient.get<ApiSuccessResponse<AiProviderAccountStatus[]>>(
+    "/api/full-analyst/provider-status",
   );
   return response.data;
 }

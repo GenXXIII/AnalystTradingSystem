@@ -1,5 +1,7 @@
 namespace XauAi.Application.TargetAnalysis;
 
+using XauAi.Application.AI;
+
 public interface ITargetAnalystService
 {
     Task<TargetAnalysisResult> AnalyzeAsync(
@@ -23,6 +25,9 @@ public interface ITargetAnalystService
     Task<TargetAnalysisResult> CancelAsync(Guid id, CancellationToken cancellationToken = default);
 
     Task MonitorActiveAsync(CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<AiProviderAccountStatus>> GetProviderStatusesAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public interface ITargetAnalysisStore
@@ -109,12 +114,4 @@ public interface ITargetResultValidator
         IReadOnlyDictionary<Guid, XauAi.Application.AI.AiEvidenceCandidate> selectedEvidence,
         decimal? requestedTimeframeAtr,
         IReadOnlyList<TargetWorkspaceRunResult> workspaceResults);
-}
-
-public interface ITargetAiRequestGate
-{
-    Task WaitAsync(
-        TargetWorkspace workspace,
-        int requestsPerMinute,
-        CancellationToken cancellationToken = default);
 }

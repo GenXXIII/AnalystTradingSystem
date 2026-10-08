@@ -147,7 +147,6 @@ export function MarketTerminal() {
             <AnalystRail
               timeframe={terminal.timeframe}
               localStatus={terminal.localStatus}
-              targetResult={targetChartResult}
               onTargetResultChange={setTargetChartResult}
               onFullResultChange={setFullChartResult}
             />
@@ -217,10 +216,9 @@ export function MarketTerminal() {
   );
 }
 
-function AnalystRail({ timeframe, localStatus, targetResult, onTargetResultChange, onFullResultChange }: Readonly<{
+function AnalystRail({ timeframe, localStatus, onTargetResultChange, onFullResultChange }: Readonly<{
   timeframe: MarketTimeframeCode;
   localStatus: LocalAnalystStatus | null;
-  targetResult: TargetAnalysisResult | null;
   onTargetResultChange: (result: TargetAnalysisResult | null) => void;
   onFullResultChange: (result: FullAnalysisResult | null) => void;
 }>) {
@@ -251,7 +249,7 @@ function AnalystRail({ timeframe, localStatus, targetResult, onTargetResultChang
       <div className="analyst-rail-body" role="tabpanel">
         {activeWorkspace === "target"
           ? <TargetAnalystWorkspace timeframe={timeframe} localStatus={localStatus} onResultChange={onTargetResultChange} />
-          : <FullAnalystWorkspace timeframe={timeframe} targetPlan={targetResult} onResultChange={onFullResultChange} />}
+          : <FullAnalystWorkspace timeframe={timeframe} onResultChange={onFullResultChange} />}
       </div>
     </section>
   );
@@ -348,6 +346,8 @@ function ProviderStorageModule({
   const futureReady = analysts?.futureConfiguration.filter((item) => item.enabled && item.hasApiKey).length ?? 0;
   const targetFailures = analysts?.latestTarget?.specialistResults.filter((item) => item.status === "Failed") ?? [];
   const futureFailures = analysts?.latestFuture?.workspaceResults.filter((item) => item.status === "Failed") ?? [];
+  const targetProviderIssue = analysts?.targetProviderStatuses.find((item) => !item.canGenerate) ?? null;
+  const futureProviderIssue = analysts?.futureProviderStatuses.find((item) => !item.canGenerate) ?? null;
   const localIssues = localStatus?.timeframes
     .filter((item) => isLocalReadinessFailure(item.lastReason))
     .map((item) => `${item.timeframe}: ${formatEvidence(item.lastReason ?? "not evaluated")}`) ?? [];
@@ -386,9 +386,10 @@ function ProviderStorageModule({
     {
       name: "Target AI",
       role: "Best forward position",
-      healthy: targetReady === 8 && targetFailures.length === 0,
+      healthy: targetReady === 8 && targetFailures.length === 0 && targetProviderIssue === null,
       storage: `${integer.format(analysts?.targetStoredResults ?? 0)} analysis snapshots in SQL`,
       message: analystError
+        ?? targetProviderIssue?.message
         ?? (targetFailures.length > 0
           ? `Latest run failed: ${targetFailures.map((item) => `${item.workspace}: ${item.errorCode ?? item.errorMessage ?? "provider unavailable"}`).join(" · ")}`
           : `${targetReady}/8 independent AI workspaces configured; latest persisted run has no provider failure.`),
@@ -396,9 +397,10 @@ function ProviderStorageModule({
     {
       name: "Future AI",
       role: "BUY / SELL / WAIT outlook",
-      healthy: futureReady === 8 && futureFailures.length === 0,
+      healthy: futureReady === 8 && futureFailures.length === 0 && futureProviderIssue === null,
       storage: `${integer.format(analysts?.futureStoredResults ?? 0)} analysis snapshots in SQL`,
       message: analystError
+        ?? futureProviderIssue?.message
         ?? (futureFailures.length > 0
           ? `Latest run failed: ${futureFailures.map((item) => `${item.workspace}: ${item.errorMessage ?? "provider unavailable"}`).join(" · ")}`
           : `${futureReady}/8 independent AI workspaces configured; latest persisted run has no provider failure.`),

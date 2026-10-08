@@ -3,25 +3,30 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getFullAnalysisHistory,
+  getFullProviderStatuses,
   getFullWorkspaceConfiguration,
   type FullAnalysisResult,
   type FullWorkspaceConfiguration,
 } from "@/features/full-analysis/api/full-analyst";
 import {
   getTargetHistory,
+  getTargetProviderStatuses,
   getTargetWorkspaceConfiguration,
   type TargetAnalysisResult,
   type TargetWorkspaceConfiguration,
 } from "@/features/target-analysis/api/target-analyst";
 import { ApiClientError } from "@/lib/api/errors";
+import type { AiProviderAccountStatus } from "@/features/analysis/api/ai-provider-status";
 
 export interface AnalystHealthSnapshot {
   targetConfiguration: TargetWorkspaceConfiguration[];
   targetStoredResults: number;
   latestTarget: TargetAnalysisResult | null;
+  targetProviderStatuses: AiProviderAccountStatus[];
   futureConfiguration: FullWorkspaceConfiguration[];
   futureStoredResults: number;
   latestFuture: FullAnalysisResult | null;
+  futureProviderStatuses: AiProviderAccountStatus[];
 }
 
 export function useAnalystHealth(enabled: boolean) {
@@ -35,20 +40,24 @@ export function useAnalystHealth(enabled: boolean) {
     setLoading(true);
     setError(null);
     try {
-      const [targetConfiguration, targetHistory, futureConfiguration, futureHistory] = await Promise.all([
+      const [targetConfiguration, targetHistory, targetProviderStatuses, futureConfiguration, futureHistory, futureProviderStatuses] = await Promise.all([
         getTargetWorkspaceConfiguration(),
         getTargetHistory(1),
+        getTargetProviderStatuses(),
         getFullWorkspaceConfiguration(),
         getFullAnalysisHistory(1),
+        getFullProviderStatuses(),
       ]);
       if (sequence !== requestSequence.current) return;
       setSnapshot({
         targetConfiguration,
         targetStoredResults: targetHistory.totalItems,
         latestTarget: targetHistory.items[0] ?? null,
+        targetProviderStatuses,
         futureConfiguration,
         futureStoredResults: futureHistory.totalItems,
         latestFuture: futureHistory.items[0] ?? null,
+        futureProviderStatuses,
       });
     } catch (reason) {
       if (sequence !== requestSequence.current) return;

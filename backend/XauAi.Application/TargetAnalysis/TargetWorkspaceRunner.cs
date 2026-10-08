@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using XauAi.Application.AI;
 
 namespace XauAi.Application.TargetAnalysis;
 
@@ -6,7 +6,7 @@ internal sealed class TargetWorkspaceRunner(
     TargetWorkspaceCatalog catalog,
     ITargetAiProviderFactory providerFactory,
     ITargetAiResponseValidator responseValidator,
-    ITargetAiRequestGate requestGate,
+    IScopedAiProviderRequestGate requestGate,
     TimeProvider timeProvider) : ITargetWorkspaceRunner
 {
     public Task<TargetWorkspaceRunResult> RunSpecialistAsync(
@@ -43,7 +43,10 @@ internal sealed class TargetWorkspaceRunner(
         try
         {
             await requestGate.WaitAsync(
-                request.Workspace,
+                "Target",
+                configuration.Provider,
+                configuration.BaseUrl,
+                configuration.ApiKey,
                 configuration.RequestsPerMinute,
                 cancellationToken);
             var completion = await providerFactory.Create(configuration.Adapter)
@@ -112,45 +115,4 @@ internal sealed class TargetWorkspaceRunner(
             message,
             createdAt,
             timeProvider.GetUtcNow().ToUniversalTime());
-}
-
-internal sealed class TargetAiRequestGate(TimeProvider timeProvider) : ITargetAiRequestGate
-{
-    private readonly ConcurrentDictionary<TargetWorkspace, GateState> states = new();
-
-    public async Task WaitAsync(
-        TargetWorkspace workspace,
-        int requestsPerMinute,
-        CancellationToken cancellationToken = default)
-    {
-        if (requestsPerMinute <= 0)
-        {
-            return;
-        }
-
-        var state = states.GetOrAdd(workspace, static _ => new GateState());
-        await state.Lock.WaitAsync(cancellationToken);
-        try
-        {
-            var interval = TimeSpan.FromMinutes(1d / requestsPerMinute);
-            var wait = state.LastRequestUtc + interval - timeProvider.GetUtcNow();
-            if (wait > TimeSpan.Zero)
-            {
-                await Task.Delay(wait, timeProvider, cancellationToken);
-            }
-
-            state.LastRequestUtc = timeProvider.GetUtcNow();
-        }
-        finally
-        {
-            state.Lock.Release();
-        }
-    }
-
-    private sealed class GateState
-    {
-        public SemaphoreSlim Lock { get; } = new(1, 1);
-
-        public DateTimeOffset LastRequestUtc { get; set; } = DateTimeOffset.MinValue;
-    }
 }

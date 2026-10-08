@@ -375,6 +375,8 @@ public sealed class TargetWorkspaceCatalog(IEnumerable<TargetWorkspaceConfigurat
                 TargetAnalysisErrorCodes.WorkspaceNotConfigured,
                 $"The {workspace} target AI workspace is not configured.");
 
+    internal IReadOnlyList<TargetWorkspaceConfiguration> Configurations => [.. configurations.Values];
+
     public IReadOnlyList<TargetWorkspaceConfigurationView> GetSafeViews() =>
         [.. configurations.Values.OrderBy(configuration => configuration.Workspace)
             .Select(configuration => new TargetWorkspaceConfigurationView(

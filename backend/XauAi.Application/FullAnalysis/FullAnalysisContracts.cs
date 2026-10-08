@@ -1,5 +1,7 @@
 namespace XauAi.Application.FullAnalysis;
 
+using XauAi.Application.AI;
+
 public interface IFullAnalystService
 {
     Task<FullAnalysisResult> AnalyzeAsync(CreateFullAnalysisRequest request, CancellationToken cancellationToken = default);
@@ -9,6 +11,7 @@ public interface IFullAnalystService
     Task<IReadOnlyList<FullLifecycleItem>> GetLifecycleAsync(Guid id, CancellationToken cancellationToken = default);
     Task<FullAnalysisResult> CancelAsync(Guid id, CancellationToken cancellationToken = default);
     Task MonitorActiveAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<AiProviderAccountStatus>> GetProviderStatusesAsync(CancellationToken cancellationToken = default);
 }
 
 public interface IFullAnalysisStore
@@ -60,9 +63,4 @@ public interface IFullResultValidator
         FullSpecialistOutput risk,
         FullAnalysisSnapshot snapshot,
         IReadOnlyList<FullWorkspaceRunResult> workspaceResults);
-}
-
-public interface IFullAiRequestGate
-{
-    Task WaitAsync(FullWorkspace workspace, int requestsPerMinute, CancellationToken cancellationToken = default);
 }

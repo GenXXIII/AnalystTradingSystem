@@ -1,4 +1,5 @@
 using XauAi.Api.Models;
+using XauAi.Application.AI;
 using XauAi.Application.FullAnalysis;
 using XauAi.Application.MarketData;
 
@@ -25,7 +26,19 @@ public static class FullAnalystEndpoints
             .WithSummary("Creates one evidence-bound Full Analyst job and returns BUY, SELL, or WAIT.")
             .Produces<ApiSuccessResponse<FullAnalysisResult>>(StatusCodes.Status201Created)
             .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest)
+            .Produces<ApiErrorResponse>(StatusCodes.Status429TooManyRequests)
             .Produces<ApiErrorResponse>(StatusCodes.Status503ServiceUnavailable);
+
+        group.MapGet("/provider-status", async (
+                IFullAnalystService service,
+                HttpContext context,
+                CancellationToken cancellationToken) =>
+            Results.Ok(ApiSuccessResponse<IReadOnlyList<AiProviderAccountStatus>>.Create(
+                await service.GetProviderStatusesAsync(cancellationToken),
+                context.TraceIdentifier)))
+            .WithName("GetFullAiProviderStatus")
+            .WithSummary("Returns safe Future AI provider authentication and daily-quota readiness.")
+            .Produces<ApiSuccessResponse<IReadOnlyList<AiProviderAccountStatus>>>(StatusCodes.Status200OK);
 
         group.MapGet("/jobs/{id:guid}", async (
                 Guid id,

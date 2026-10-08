@@ -64,6 +64,7 @@ public static class DependencyInjection
         services.AddSingleton<IAiEvidenceCompressor, AiEvidenceCompressor>();
         services.AddSingleton<IAiResponseValidator, AiResponseValidator>();
         services.AddSingleton<IAiRequestGate, AiRequestGate>();
+        services.AddSingleton<IScopedAiProviderRequestGate, ScopedAiProviderRequestGate>();
         services.AddSingleton<IAiInterpretationExecutionGate, AiInterpretationExecutionGate>();
         services.AddSingleton<IAiSpecialist>(serviceProvider => new ConfiguredAiSpecialist(
             AiSpecialist.News,
@@ -109,12 +110,10 @@ public static class DependencyInjection
         services.AddScoped<IAiInterpretationService, AiInterpretationService>();
         services.AddSingleton<ITargetAiResponseValidator, TargetAiResponseValidator>();
         services.AddSingleton<ITargetResultValidator, TargetResultValidator>();
-        services.AddSingleton<ITargetAiRequestGate, TargetAiRequestGate>();
         services.AddScoped<ITargetWorkspaceRunner, TargetWorkspaceRunner>();
         services.AddScoped<ITargetAnalystService, TargetAnalystService>();
         services.AddSingleton<IFullAiResponseValidator, FullAiResponseValidator>();
         services.AddSingleton<IFullResultValidator, FullResultValidator>();
-        services.AddSingleton<IFullAiRequestGate, FullAiRequestGate>();
         services.AddSingleton<IFullWorkspaceRunner, FullWorkspaceRunner>();
         services.AddScoped<IFullAnalystService, FullAnalystService>();
 

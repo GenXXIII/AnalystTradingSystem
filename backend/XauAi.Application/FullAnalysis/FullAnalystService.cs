@@ -19,6 +19,7 @@ internal sealed class FullAnalystService(
     ITechnicalAnalysisService technicalAnalysis,
     IFullWorkspaceRunner workspaceRunner,
     IFullResultValidator resultValidator,
+    IAiProviderAccountStatusService providerAccountStatus,
     FullWorkspaceCatalog workspaceCatalog,
     FullAnalystSettings settings,
     TimeProvider timeProvider,
@@ -64,6 +65,8 @@ internal sealed class FullAnalystService(
                 FullAnalysisErrorCodes.InvalidState,
                 "Cancel or wait for the active Future Analyst result to finish before generating another outlook.");
         }
+
+        await EnsureProviderCanGenerateAsync(cancellationToken);
 
         var analysisTime = (request.AnalysisTimeUtc ?? now).ToUniversalTime();
         if (analysisTime > now)
@@ -223,6 +226,39 @@ internal sealed class FullAnalystService(
     public async Task<FullAnalysisResult> GetAsync(Guid id, CancellationToken cancellationToken = default) =>
         await store.GetAsync(id, cancellationToken)
         ?? throw new FullAnalysisException(FullAnalysisErrorCodes.NotFound, "The requested Full Analysis was not found.");
+
+    public async Task<IReadOnlyList<AiProviderAccountStatus>> GetProviderStatusesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var requests = workspaceCatalog.Configurations
+            .Where(configuration => configuration.Enabled)
+            .GroupBy(configuration => new
+            {
+                configuration.Provider,
+                configuration.BaseUrl,
+                configuration.ApiKey
+            })
+            .Select(group => providerAccountStatus.GetStatusAsync(
+                new AiProviderAccountRequest(group.Key.Provider, group.Key.BaseUrl, group.Key.ApiKey),
+                cancellationToken));
+        return await Task.WhenAll(requests);
+    }
+
+    private async Task EnsureProviderCanGenerateAsync(CancellationToken cancellationToken)
+    {
+        var blocked = (await GetProviderStatusesAsync(cancellationToken))
+            .FirstOrDefault(status => !status.CanGenerate);
+        if (blocked is null)
+        {
+            return;
+        }
+
+        throw new FullAnalysisException(
+            blocked.State == AiProviderAccountStates.QuotaExhausted
+                ? FullAnalysisErrorCodes.RateLimited
+                : FullAnalysisErrorCodes.AuthenticationFailed,
+            blocked.Message);
+    }
 
     public Task<IReadOnlyList<FullAnalysisResult>> GetActiveAsync(
         string symbol,

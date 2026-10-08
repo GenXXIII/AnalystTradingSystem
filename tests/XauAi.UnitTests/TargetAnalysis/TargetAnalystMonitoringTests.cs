@@ -57,6 +57,7 @@ public sealed class TargetAnalystMonitoringTests
         null!,
         null!,
         null!,
+        null!,
         new TargetAnalystSettings { Enabled = true, Symbol = "XAUUSD" },
         new FixedTimeProvider(Now),
         NullLogger<TargetAnalystService>.Instance);

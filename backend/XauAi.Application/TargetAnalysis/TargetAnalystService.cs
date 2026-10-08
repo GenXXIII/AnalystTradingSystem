@@ -21,6 +21,7 @@ internal sealed class TargetAnalystService(
     ILocalAnalystService localAnalyst,
     ITargetWorkspaceRunner workspaceRunner,
     ITargetResultValidator resultValidator,
+    IAiProviderAccountStatusService providerAccountStatus,
     TargetWorkspaceCatalog workspaceCatalog,
     TargetAnalystSettings settings,
     TimeProvider timeProvider,
@@ -66,6 +67,8 @@ internal sealed class TargetAnalystService(
                 TargetAnalysisErrorCodes.InvalidState,
                 "Cancel or wait for the active target to finish before generating another target.");
         }
+
+        await EnsureProviderCanGenerateAsync(cancellationToken);
 
         var analysisTime = (request.AnalysisTimeUtc ?? now).ToUniversalTime();
         if (analysisTime > now)
@@ -240,6 +243,39 @@ internal sealed class TargetAnalystService(
         ?? throw new TargetAnalysisException(
             TargetAnalysisErrorCodes.NotFound,
             "The requested target analysis was not found.");
+
+    public async Task<IReadOnlyList<AiProviderAccountStatus>> GetProviderStatusesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var requests = workspaceCatalog.Configurations
+            .Where(configuration => configuration.Enabled)
+            .GroupBy(configuration => new
+            {
+                configuration.Provider,
+                configuration.BaseUrl,
+                configuration.ApiKey
+            })
+            .Select(group => providerAccountStatus.GetStatusAsync(
+                new AiProviderAccountRequest(group.Key.Provider, group.Key.BaseUrl, group.Key.ApiKey),
+                cancellationToken));
+        return await Task.WhenAll(requests);
+    }
+
+    private async Task EnsureProviderCanGenerateAsync(CancellationToken cancellationToken)
+    {
+        var blocked = (await GetProviderStatusesAsync(cancellationToken))
+            .FirstOrDefault(status => !status.CanGenerate);
+        if (blocked is null)
+        {
+            return;
+        }
+
+        throw new TargetAnalysisException(
+            blocked.State == AiProviderAccountStates.QuotaExhausted
+                ? TargetAnalysisErrorCodes.RateLimited
+                : TargetAnalysisErrorCodes.AuthenticationFailed,
+            blocked.Message);
+    }
 
     public Task<IReadOnlyList<TargetAnalysisResult>> GetActiveAsync(
         string symbol,

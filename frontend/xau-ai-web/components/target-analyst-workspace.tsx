@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { AiProviderAccountStatus } from "@/features/analysis/api/ai-provider-status";
 import type { LocalAnalystStatus } from "@/features/analysis/api/get-local-analyst";
 import type { MarketTimeframeCode } from "@/features/market/api/get-pipeline-data";
 import {
@@ -8,6 +9,7 @@ import {
   createTargetAnalysis,
   getActiveTargets,
   getTargetHistory,
+  getTargetProviderStatuses,
   getTargetWorkspaceConfiguration,
   type TargetAnalysisResult,
   type TargetWorkspaceConfiguration,
@@ -33,6 +35,7 @@ export function TargetAnalystWorkspace({ timeframe, localStatus, onResultChange 
   const [result, setResult] = useState<TargetAnalysisResult | null>(null);
   const [history, setHistory] = useState<TargetAnalysisResult[]>([]);
   const [configuration, setConfiguration] = useState<TargetWorkspaceConfiguration[]>([]);
+  const [providerStatuses, setProviderStatuses] = useState<AiProviderAccountStatus[]>([]);
   const [activeResultId, setActiveResultId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
@@ -44,15 +47,17 @@ export function TargetAnalystWorkspace({ timeframe, localStatus, onResultChange 
       setLoading(true);
       setError(null);
       try {
-        const [active, recent, workspaces] = await Promise.all([
+        const [active, recent, workspaces, providers] = await Promise.all([
           getActiveTargets(),
           getTargetHistory(),
           getTargetWorkspaceConfiguration(),
+          getTargetProviderStatuses(),
         ]);
         if (!cancelled) {
           const selected = active.find((item) => item.timeframe === timeframe) ?? active[0] ?? null;
           setHistory(recent.items);
           setConfiguration(workspaces);
+          setProviderStatuses(providers);
           setActiveResultId(selected?.id ?? null);
           setResult(selected);
           onResultChange?.(selected);
@@ -71,8 +76,9 @@ export function TargetAnalystWorkspace({ timeframe, localStatus, onResultChange 
     let cancelled = false;
     const refreshActive = async () => {
       try {
-        const active = await getActiveTargets();
+        const [active, providers] = await Promise.all([getActiveTargets(), getTargetProviderStatuses()]);
         if (cancelled) return;
+        setProviderStatuses(providers);
         const selected = active.find((item) => item.timeframe === timeframe) ?? active[0] ?? null;
         setActiveResultId(selected?.id ?? null);
         if (selected) {
@@ -94,7 +100,8 @@ export function TargetAnalystWorkspace({ timeframe, localStatus, onResultChange 
   }, [activeResultId, onResultChange, timeframe]);
 
   const configured = configuration.filter((workspace) => workspace.enabled && workspace.hasApiKey).length;
-  const canRun = !loading && !running && configured === 8 && activeResultId === null;
+  const blockedProvider = providerStatuses.find((status) => !status.canGenerate) ?? null;
+  const canRun = !loading && !running && configured === 8 && activeResultId === null && blockedProvider === null;
 
   async function runAnalysis() {
     setRunning(true);
@@ -142,13 +149,14 @@ export function TargetAnalystWorkspace({ timeframe, localStatus, onResultChange 
           <small>{configured}/8 Target AI configured · Local {local ? local.state : "checking"}</small>
         </div>
         <button type="button" className="primary-action" onClick={runAnalysis} disabled={!canRun}>
-          {running ? "Analyzing…" : activeResultId ? "Active target loaded" : "Generate Target"}
+          {running ? "Analyzing…" : activeResultId ? "Active target loaded" : providerButtonLabel(blockedProvider, "Generate Target")}
         </button>
       </header>
 
       {configured < 8 && !loading ? (
         <p className="full-analyst-warning">Enable and configure all eight Target AI workspaces before requesting a target.</p>
       ) : null}
+      {blockedProvider ? <p className="full-analyst-warning" role="status">{blockedProvider.message}</p> : null}
       {error ? <p className="terminal-error" role="alert">{error}</p> : null}
 
       {result ? (
@@ -271,4 +279,9 @@ function formatDate(value: string | null): string {
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : "Target Analyst request failed.";
+}
+
+function providerButtonLabel(status: AiProviderAccountStatus | null, fallback: string): string {
+  if (!status) return fallback;
+  return status.state === "QuotaExhausted" ? "Daily quota exhausted" : "AI provider unavailable";
 }

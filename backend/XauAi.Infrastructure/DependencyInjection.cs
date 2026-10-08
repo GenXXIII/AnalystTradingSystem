@@ -456,6 +456,7 @@ public static class DependencyInjection
             Timeout = Timeout.InfiniteTimeSpan
         });
         services.AddSingleton<INewsProvider, NewsDataProvider>();
+        services.AddSingleton<IAiProviderAccountStatusService, AiProviderAccountStatusService>();
         services.AddSingleton<IAiProvider, OpenAiCompatibleProvider>();
         services.AddSingleton<IAiProviderFactory, AiProviderFactory>();
         services.AddSingleton<ITargetAiProvider, TargetOpenAiCompatibleProvider>();

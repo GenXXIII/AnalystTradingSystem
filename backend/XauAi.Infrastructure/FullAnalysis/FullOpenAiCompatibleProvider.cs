@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using XauAi.Application.FullAnalysis;
 
@@ -13,7 +14,10 @@ internal sealed class FullOpenAiCompatibleProvider(
     TimeProvider timeProvider,
     ILogger<FullOpenAiCompatibleProvider> logger) : IFullAiProvider
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
     public string Adapter => "OpenAiCompatible";
 
@@ -23,20 +27,35 @@ internal sealed class FullOpenAiCompatibleProvider(
         CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
+        var isGroq = string.Equals(configuration.Provider, "Groq", StringComparison.OrdinalIgnoreCase);
+        var models = ModelCandidates(configuration.Model, configuration.FallbackModels);
+        var modelIndex = 0;
         for (var attempt = 0; ; attempt++)
         {
             try
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeout.CancelAfter(TimeSpan.FromSeconds(configuration.TimeoutSeconds));
-                using var message = CreateRequest(request, configuration);
+                using var message = CreateRequest(request, configuration, models[modelIndex]);
                 using var response = await httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
                 if (!response.IsSuccessStatusCode)
                 {
                     var exception = Failure(response.StatusCode);
-                    if (attempt < configuration.MaxRetries && IsTransient(response.StatusCode))
+                    if (response.StatusCode != HttpStatusCode.TooManyRequests
+                        && attempt < configuration.MaxRetries
+                        && IsTransient(response.StatusCode))
                     {
                         await DelayAsync(attempt, cancellationToken);
+                        continue;
+                    }
+
+                    if ((response.StatusCode == HttpStatusCode.TooManyRequests
+                            || IsTransient(response.StatusCode)
+                            || isGroq && response.StatusCode == HttpStatusCode.BadRequest)
+                        && modelIndex < models.Count - 1)
+                    {
+                        modelIndex++;
+                        attempt = -1;
                         continue;
                     }
 
@@ -58,13 +77,21 @@ internal sealed class FullOpenAiCompatibleProvider(
                     ReadToken(document.RootElement, "prompt_tokens", "input_tokens"),
                     ReadToken(document.RootElement, "completion_tokens", "output_tokens"),
                     checked((int)Math.Min(stopwatch.ElapsedMilliseconds, int.MaxValue)),
-                    response.Headers.TryGetValues("x-request-id", out var values) ? values.FirstOrDefault() : null);
+                    response.Headers.TryGetValues("x-request-id", out var values) ? values.FirstOrDefault() : null,
+                    ReadModel(document.RootElement));
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
                 if (attempt < configuration.MaxRetries)
                 {
                     await DelayAsync(attempt, cancellationToken);
+                    continue;
+                }
+
+                if (modelIndex < models.Count - 1)
+                {
+                    modelIndex++;
+                    attempt = -1;
                     continue;
                 }
 
@@ -78,6 +105,13 @@ internal sealed class FullOpenAiCompatibleProvider(
                     continue;
                 }
 
+                if (modelIndex < models.Count - 1)
+                {
+                    modelIndex++;
+                    attempt = -1;
+                    continue;
+                }
+
                 throw new FullAnalysisException(FullAnalysisErrorCodes.Unavailable, "The Full AI provider is temporarily unavailable.", exception);
             }
             catch (JsonException exception)
@@ -87,8 +121,13 @@ internal sealed class FullOpenAiCompatibleProvider(
         }
     }
 
-    private static HttpRequestMessage CreateRequest(FullAiRequest request, FullWorkspaceConfiguration configuration)
+    private static HttpRequestMessage CreateRequest(
+        FullAiRequest request,
+        FullWorkspaceConfiguration configuration,
+        string model)
     {
+        var isOpenRouter = string.Equals(configuration.Provider, "OpenRouter", StringComparison.OrdinalIgnoreCase);
+        var isGroq = string.Equals(configuration.Provider, "Groq", StringComparison.OrdinalIgnoreCase);
         var message = new HttpRequestMessage(HttpMethod.Post, ResolveEndpoint(configuration.BaseUrl));
         if (!string.IsNullOrWhiteSpace(configuration.ApiKey))
         {
@@ -98,9 +137,15 @@ internal sealed class FullOpenAiCompatibleProvider(
         message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         message.Content = JsonContent.Create(new
         {
-            model = configuration.Model,
+            model,
+            models = isOpenRouter && configuration.FallbackModels.Count > 0 ? configuration.FallbackModels : null,
             temperature = configuration.Temperature,
             max_tokens = configuration.MaxOutputTokens,
+            reasoning = isOpenRouter && configuration.DisableReasoning ? new { enabled = false } : null,
+            reasoning_effort = isGroq && configuration.DisableReasoning
+                ? model.StartsWith("qwen/", StringComparison.OrdinalIgnoreCase) ? "none" : "low"
+                : null,
+            usage = isOpenRouter ? new { include = true } : null,
             messages = new object[]
             {
                 new { role = "system", content = SystemPrompt(request) },
@@ -119,6 +164,12 @@ internal sealed class FullOpenAiCompatibleProvider(
         }, options: SerializerOptions);
         return message;
     }
+
+    private static IReadOnlyList<string> ModelCandidates(string primary, IReadOnlyList<string> fallbacks) =>
+        [.. new[] { primary }
+            .Concat(fallbacks)
+            .Where(model => !string.IsNullOrWhiteSpace(model))
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
 
     private static string SystemPrompt(FullAiRequest request)
     {
@@ -197,8 +248,8 @@ internal sealed class FullOpenAiCompatibleProvider(
                 required = new[] { "summary", "price", "condition" }
             },
             uncertainty = new { type = "string" },
-            validUntilUtc = new { type = new[] { "string", "null" }, format = "date-time" },
-            supportingWorkspaces = new { type = "array", items = StringEnum<FullWorkspace>(), uniqueItems = true }
+            validUntilUtc = new { type = new[] { "string", "null" } },
+            supportingWorkspaces = new { type = "array", items = StringEnum<FullWorkspace>() }
         },
         required = new[]
         {
@@ -208,14 +259,13 @@ internal sealed class FullOpenAiCompatibleProvider(
     };
 
     private static object StringArray() => new { type = "array", items = new { type = "string" } };
-    private static object Ratio() => new { type = "number", minimum = 0, maximum = 1 };
+    private static object Ratio() => new { type = "number" };
     private static object StringEnum<TEnum>() where TEnum : struct, Enum =>
         new { type = "string", @enum = Enum.GetNames<TEnum>().Select(JsonNamingPolicy.CamelCase.ConvertName).ToArray() };
     private static object EvidenceIdsSchema() => new
     {
         type = "array",
-        items = new { type = "string", format = "uuid" },
-        uniqueItems = true
+        items = new { type = "string" }
     };
 
     private static Uri ResolveEndpoint(string baseUrl)
@@ -262,6 +312,11 @@ internal sealed class FullOpenAiCompatibleProvider(
             ? secondValue
             : null;
     }
+
+    private static string? ReadModel(JsonElement root) =>
+        root.TryGetProperty("model", out var model) && model.ValueKind == JsonValueKind.String
+            ? model.GetString()
+            : null;
 
     private static bool IsTransient(HttpStatusCode statusCode) =>
         statusCode == HttpStatusCode.RequestTimeout

@@ -50,6 +50,31 @@ public sealed class MarketDataSynchronizationServiceTests
     }
 
     [Fact]
+    public async Task Incremental_sync_reconciles_trailing_provisional_candles_after_latest_completed_candle()
+    {
+        var store = new InMemoryStore();
+        await store.SaveAsync(
+        [
+            CreateCandle(StartUtc.AddHours(2), MarketTimeframe.H1, complete: true),
+            CreateCandle(StartUtc.AddHours(3), MarketTimeframe.H1, complete: false),
+            CreateCandle(StartUtc.AddHours(4), MarketTimeframe.H1, complete: false)
+        ]);
+        var provider = new FakeProvider(GenerateCandles);
+        var service = CreateService(provider, store, new FakeStateStore(), 100, StartUtc.AddHours(5));
+
+        await service.SynchronizeAsync(new MarketDataSynchronizationRequest(
+            "XAUUSD",
+            MarketTimeframe.H1,
+            FromUtc: null,
+            ToUtc: StartUtc.AddHours(5),
+            IncludeFormingCandle: true));
+
+        Assert.Equal(StartUtc.AddHours(3), provider.Requests.Single().FromUtc);
+        Assert.True(store.Candles.Single(candle => candle.OpenTimeUtc == StartUtc.AddHours(3)).IsComplete);
+        Assert.True(store.Candles.Single(candle => candle.OpenTimeUtc == StartUtc.AddHours(4)).IsComplete);
+    }
+
+    [Fact]
     public async Task Incremental_sync_recovers_session_gap_saved_before_startup_history_runs()
     {
         var fridayLastCandle = new DateTimeOffset(2026, 10, 2, 20, 45, 0, TimeSpan.Zero);
@@ -463,6 +488,7 @@ public sealed class MarketDataSynchronizationServiceTests
             Task.FromResult<IReadOnlyList<DateTimeOffset>>([.. Candles
                 .Where(candle =>
                     candle.Timeframe == timeframe
+                    && candle.IsComplete
                     && candle.OpenTimeUtc >= fromUtc
                     && candle.OpenTimeUtc <= toUtc)
                 .Select(candle => candle.OpenTimeUtc)

@@ -9,12 +9,15 @@ import {
   createSeriesMarkers,
   type CandlestickData,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
   type LineData,
   LineSeries,
   LineStyle,
   LineType,
+  type Logical,
+  type MouseEventParams,
   type SeriesMarker,
   type Time,
   type UTCTimestamp,
@@ -24,21 +27,21 @@ import type { LocalSignalChartMarker } from "@/features/analysis/api/get-local-a
 import type { FullAnalysisResult } from "@/features/full-analysis/api/full-analyst";
 import type { TargetAnalysisResult } from "@/features/target-analysis/api/target-analyst";
 import type { XauUsdMarketSession } from "@/lib/market/xauusd-session";
+import { DISPLAY_TIME_ZONE, DISPLAY_TIME_ZONE_LABEL } from "@/lib/time/utc-plus-seven";
 
 const price = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
-const utcTime = new Intl.DateTimeFormat("en-GB", {
+const displayTime = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
   month: "short",
   hour: "2-digit",
   minute: "2-digit",
   hour12: false,
-  timeZone: "UTC",
+  timeZone: DISPLAY_TIME_ZONE,
 });
 const MILLISECONDS_PER_DAY = 86_400_000;
-const WEEK_WINDOW_DAYS = 7;
 const RIGHT_PADDING_BARS = 6;
 const EMA_PERIOD = 20;
 const PRICE_FLOOR_PERIOD = 12;
@@ -70,6 +73,31 @@ type ChartReadout = {
   closedSession?: boolean;
 };
 
+type DrawingTool = "none" | "line" | "draw" | "position";
+type DrawingPoint = { logical: Logical; price: number };
+type LineDrawing = { start: DrawingPoint; end: DrawingPoint };
+type ProjectedLine = { id: string; x1: number; y1: number; x2: number; y2: number };
+type ProjectedPosition = {
+  id: string;
+  left: number;
+  right: number;
+  width: number;
+  top: number;
+  entryY: number;
+  bottom: number;
+  profitHeight: number;
+  riskHeight: number;
+  handles: Array<{ x: number; y: number }>;
+};
+type PositionLevel = "entry" | "outerA" | "outerB" | "start" | "end";
+type PositionDrawing = {
+  entryPrice: number;
+  outerAPrice: number;
+  outerBPrice: number;
+  startLogical: Logical;
+  endLogical: Logical;
+};
+
 type TradingChartProps = Readonly<{
   candles: StoredMarketCandle[];
   quote: MarketQuote | null;
@@ -92,13 +120,26 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
   const priceFloorSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const targetSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const invalidationSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const drawingToolRef = useRef<DrawingTool>("none");
+  const drawingAnchorRef = useRef<DrawingPoint | null>(null);
+  const lineDrawingsRef = useRef<LineDrawing[]>([]);
+  const userPriceLinesRef = useRef<IPriceLine[]>([]);
+  const userDrawingSeriesRef = useRef<ISeriesApi<"Line">[]>([]);
+  const positionDrawingsRef = useRef<PositionDrawing[]>([]);
+  const positionDragRef = useRef<{ drawing: PositionDrawing; level: PositionLevel; pointerId: number; lastPrice: number } | null>(null);
+  const freehandPathsRef = useRef<string[]>([]);
+  const activeFreehandPointsRef = useRef<Array<[number, number]> | null>(null);
   const activeTimeframeRef = useRef<string | null>(null);
   const fittedPointCountRef = useRef(0);
   const priceMarginRef = useRef(DEFAULT_PRICE_MARGIN);
   const priceScaleDragRef = useRef<{ startY: number; startMargin: number } | null>(null);
   const pointerInspectingRef = useRef(false);
   const [readout, setReadout] = useState<ChartReadout | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [drawingTool, setDrawingTool] = useState<DrawingTool>("none");
+  const [freehandPaths, setFreehandPaths] = useState<string[]>([]);
+  const [projectedLines, setProjectedLines] = useState<ProjectedLine[]>([]);
+  const [projectedPositions, setProjectedPositions] = useState<ProjectedPosition[]>([]);
+  const [hasDrawings, setHasDrawings] = useState(false);
 
   const points = useMemo(
     () => normalizeCandles(candles.filter((candle) => candle.timeframe === timeframe)),
@@ -233,6 +274,10 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
       lastValueVisible: true,
     });
     const markerPlugin = createSeriesMarkers(series);
+    const refreshDrawings = () => {
+      setProjectedLines(projectLineDrawings(chart, series, lineDrawingsRef.current));
+      setProjectedPositions(projectPositionDrawings(chart, series, positionDrawingsRef.current));
+    };
 
     const handleCrosshair = (parameter: { time?: Time; seriesData: Map<unknown, unknown> }) => {
       const data = parameter.seriesData.get(series) as CandlestickData<Time> | undefined;
@@ -252,11 +297,135 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
     };
     chart.subscribeCrosshairMove(handleCrosshair);
 
+    const finishDrawing = () => {
+      drawingToolRef.current = "none";
+      drawingAnchorRef.current = null;
+      setDrawingTool("none");
+    };
+    const handleChartClick = (parameter: MouseEventParams<Time>) => {
+      const tool = drawingToolRef.current;
+      if (tool === "none" || !parameter.point) return;
+      const selectedPrice = series.coordinateToPrice(parameter.point.y);
+      const selectedLogical = chart.timeScale().coordinateToLogical(parameter.point.x);
+      if (selectedPrice === null || selectedLogical === null) return;
+      const selectedPoint = { logical: selectedLogical, price: selectedPrice };
+
+      if (tool === "line") {
+        const anchor = drawingAnchorRef.current;
+        if (!anchor) {
+          drawingAnchorRef.current = selectedPoint;
+          return;
+        }
+        lineDrawingsRef.current.push({ start: anchor, end: selectedPoint });
+        refreshDrawings();
+        setHasDrawings(true);
+        finishDrawing();
+        return;
+      }
+
+      if (tool === "draw") return;
+
+      const distance = Math.max(1, Math.abs(selectedPrice) * 0.0015);
+      const visibleRange = chart.timeScale().getVisibleLogicalRange();
+      const defaultWidth = Math.max(4, visibleRange ? (Number(visibleRange.to) - Number(visibleRange.from)) * 0.18 : 12);
+      const positionDrawing = {
+        entryPrice: selectedPrice,
+        outerAPrice: selectedPrice + distance,
+        outerBPrice: selectedPrice - distance,
+        startLogical: selectedLogical,
+        endLogical: (Number(selectedLogical) + defaultWidth) as Logical,
+      };
+      positionDrawingsRef.current.push(positionDrawing);
+      refreshDrawings();
+      setHasDrawings(true);
+      finishDrawing();
+    };
+    chart.subscribeClick(handleChartClick);
+
+    const localPoint = (event: PointerEvent): [number, number] => {
+      const rect = container.getBoundingClientRect();
+      return [event.clientX - rect.left, event.clientY - rect.top];
+    };
+    const finishPointerInteraction = (event: PointerEvent) => {
+      if (activeFreehandPointsRef.current) {
+        activeFreehandPointsRef.current = null;
+        finishDrawing();
+      }
+      if (positionDragRef.current?.pointerId === event.pointerId) positionDragRef.current = null;
+      if (container.hasPointerCapture(event.pointerId)) container.releasePointerCapture(event.pointerId);
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      if (drawingToolRef.current === "draw") {
+        event.preventDefault();
+        event.stopPropagation();
+        container.setPointerCapture(event.pointerId);
+        const point = localPoint(event);
+        activeFreehandPointsRef.current = [point];
+        const nextPaths = [...freehandPathsRef.current, freehandPath([point])];
+        freehandPathsRef.current = nextPaths;
+        setFreehandPaths(nextPaths);
+        setHasDrawings(true);
+        return;
+      }
+      if (drawingToolRef.current !== "none") return;
+      const [x, y] = localPoint(event);
+      const dragTarget = nearestPositionLevel(chart, series, positionDrawingsRef.current, x, y);
+      if (!dragTarget) return;
+      event.preventDefault();
+      event.stopPropagation();
+      container.setPointerCapture(event.pointerId);
+      positionDragRef.current = { ...dragTarget, pointerId: event.pointerId, lastPrice: dragTarget.price };
+    };
+    const handlePointerMove = (event: PointerEvent) => {
+      const freehandPoints = activeFreehandPointsRef.current;
+      if (freehandPoints) {
+        event.preventDefault();
+        event.stopPropagation();
+        const point = localPoint(event);
+        const previous = freehandPoints.at(-1);
+        if (previous && Math.hypot(point[0] - previous[0], point[1] - previous[1]) < 2) return;
+        freehandPoints.push(point);
+        const nextPaths = [...freehandPathsRef.current];
+        nextPaths[nextPaths.length - 1] = freehandPath(freehandPoints);
+        freehandPathsRef.current = nextPaths;
+        setFreehandPaths(nextPaths);
+        return;
+      }
+      const drag = positionDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const [x, y] = localPoint(event);
+      if (drag.level === "start" || drag.level === "end") {
+        const nextLogical = chart.timeScale().coordinateToLogical(x);
+        if (nextLogical === null) return;
+        movePositionTime(drag.drawing, drag.level, nextLogical);
+        refreshDrawings();
+        return;
+      }
+      const nextPrice = series.coordinateToPrice(y);
+      if (nextPrice === null) return;
+      movePositionLevel(drag.drawing, drag.level, nextPrice, drag.lastPrice);
+      drag.lastPrice = nextPrice;
+      refreshDrawings();
+    };
+    const handlePointerUp = (event: PointerEvent) => finishPointerInteraction(event);
+    const handlePointerCancel = (event: PointerEvent) => finishPointerInteraction(event);
+    container.addEventListener("pointerdown", handlePointerDown, true);
+    container.addEventListener("pointermove", handlePointerMove, true);
+    container.addEventListener("pointerup", handlePointerUp, true);
+    container.addEventListener("pointercancel", handlePointerCancel, true);
+
     const resize = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
-      if (width > 0 && height > 0) chart.resize(Math.floor(width), Math.floor(height));
+      if (width > 0 && height > 0) {
+        chart.resize(Math.floor(width), Math.floor(height));
+        refreshDrawings();
+      }
     });
     resize.observe(container);
+    chart.timeScale().subscribeVisibleLogicalRangeChange(refreshDrawings);
 
     chartRef.current = chart;
     seriesRef.current = series;
@@ -267,7 +436,13 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
     invalidationSeriesRef.current = invalidationSeries;
     return () => {
       resize.disconnect();
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(refreshDrawings);
       chart.unsubscribeCrosshairMove(handleCrosshair);
+      chart.unsubscribeClick(handleChartClick);
+      container.removeEventListener("pointerdown", handlePointerDown, true);
+      container.removeEventListener("pointermove", handlePointerMove, true);
+      container.removeEventListener("pointerup", handlePointerUp, true);
+      container.removeEventListener("pointercancel", handlePointerCancel, true);
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
@@ -276,6 +451,13 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
       priceFloorSeriesRef.current = null;
       targetSeriesRef.current = null;
       invalidationSeriesRef.current = null;
+      userPriceLinesRef.current = [];
+      userDrawingSeriesRef.current = [];
+      lineDrawingsRef.current = [];
+      positionDrawingsRef.current = [];
+      positionDragRef.current = null;
+      freehandPathsRef.current = [];
+      activeFreehandPointsRef.current = null;
     };
   }, []);
 
@@ -314,12 +496,6 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
     });
   }, [marketSession?.isOpen]);
 
-  useEffect(() => {
-    const onFullscreenChange = () => setIsFullscreen(document.fullscreenElement === shellRef.current);
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
-  }, []);
-
   const beginPriceScale = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -332,6 +508,8 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
     const margin = clampPriceMargin(drag.startMargin - ((event.clientY - drag.startY) / chartHeight) * 0.5);
     priceMarginRef.current = margin;
     applyPriceScaleMargin(chartRef.current, margin);
+    setProjectedLines(projectLineDrawings(chartRef.current, seriesRef.current, lineDrawingsRef.current));
+    setProjectedPositions(projectPositionDrawings(chartRef.current, seriesRef.current, positionDrawingsRef.current));
   };
   const endPriceScale = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
@@ -340,14 +518,65 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
   const resetPriceScale = () => {
     priceMarginRef.current = DEFAULT_PRICE_MARGIN;
     applyPriceScaleMargin(chartRef.current, DEFAULT_PRICE_MARGIN);
+    setProjectedLines(projectLineDrawings(chartRef.current, seriesRef.current, lineDrawingsRef.current));
+    setProjectedPositions(projectPositionDrawings(chartRef.current, seriesRef.current, positionDrawingsRef.current));
+  };
+  const selectDrawingTool = (tool: Exclude<DrawingTool, "none">) => {
+    const next = drawingToolRef.current === tool ? "none" : tool;
+    drawingToolRef.current = next;
+    drawingAnchorRef.current = null;
+    setDrawingTool(next);
+  };
+  const clearDrawings = () => {
+    const series = seriesRef.current;
+    const chart = chartRef.current;
+    if (series) {
+      for (const line of userPriceLinesRef.current) series.removePriceLine(line);
+    }
+    if (chart) {
+      for (const drawingSeries of userDrawingSeriesRef.current) chart.removeSeries(drawingSeries);
+    }
+    userPriceLinesRef.current = [];
+    userDrawingSeriesRef.current = [];
+    lineDrawingsRef.current = [];
+    positionDrawingsRef.current = [];
+    positionDragRef.current = null;
+    freehandPathsRef.current = [];
+    activeFreehandPointsRef.current = null;
+    drawingToolRef.current = "none";
+    drawingAnchorRef.current = null;
+    setDrawingTool("none");
+    setFreehandPaths([]);
+    setProjectedLines([]);
+    setProjectedPositions([]);
+    setHasDrawings(false);
   };
 
   const displayed: ChartReadout | null = readout ?? (latest
     ? { ...latest, closedSession: false }
     : null);
   return (
-    <div className="chart-wrap" data-market-state={marketSession?.isOpen === false ? "closed" : "open"} ref={shellRef}>
+    <div
+      className="chart-wrap"
+      data-market-state={marketSession?.isOpen === false ? "closed" : "open"}
+      data-drawing-tool={drawingTool}
+      ref={shellRef}
+    >
       <div className="chart-canvas" ref={canvasRef} aria-label={`${points.length} ${timeframe} XAUUSD candles and ${chartSignalMarkers.length} signal or analyst events`} />
+      <svg className="chart-drawing-layer" aria-hidden="true">
+        {projectedPositions.map((drawing) => (
+          <g key={drawing.id} className="position-drawing">
+            <rect className="position-profit-zone" x={drawing.left} y={drawing.top} width={drawing.width} height={drawing.profitHeight} />
+            <rect className="position-risk-zone" x={drawing.left} y={drawing.entryY} width={drawing.width} height={drawing.riskHeight} />
+            <line className="position-tp-line" x1={drawing.left} y1={drawing.top} x2={drawing.right} y2={drawing.top} />
+            <line className="position-entry-line" x1={drawing.left} y1={drawing.entryY} x2={drawing.right} y2={drawing.entryY} />
+            <line className="position-sl-line" x1={drawing.left} y1={drawing.bottom} x2={drawing.right} y2={drawing.bottom} />
+            {drawing.handles.map((handle) => <rect key={`${drawing.id}:${handle.x}:${handle.y}`} className="position-handle" x={handle.x - 4} y={handle.y - 4} width="8" height="8" rx="1" />)}
+          </g>
+        ))}
+        {projectedLines.map((line) => <line key={line.id} className="user-trend-line" x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />)}
+        {freehandPaths.map((pathValue, index) => <path key={`${index}-${pathValue.length}`} d={pathValue} />)}
+      </svg>
       {points.length === 0 ? (
         <div className="chart-empty" role="status">
           <strong>No chart evidence yet</strong>
@@ -357,7 +586,7 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
       <div className="chart-watermark" aria-hidden="true">XAUUSD <span>{timeframe}</span></div>
       {displayed ? (
         <div className="chart-ohlc" aria-live="polite">
-          <time>{formatChartTime(displayed.time)} UTC</time>
+          <time>{formatChartTime(displayed.time)} {DISPLAY_TIME_ZONE_LABEL}</time>
           {displayed.closedSession ? (
             <span>Market closed · display carry only</span>
           ) : (
@@ -405,12 +634,18 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
         {marketSession ? <span>{marketSession.nextTradingSessionLabel}</span> : null}
       </div>
       <div className="chart-controls" aria-label="Chart controls">
-        <button type="button" onClick={() => zoomChart(chartRef.current, 0.78, points.length)} aria-label="Zoom in">+</button>
-        <button type="button" onClick={() => zoomChart(chartRef.current, 1.28, points.length)} aria-label="Zoom out">−</button>
-        <button type="button" onClick={() => fitRecentCandles(chartRef.current, points, timeframe)}>Recent</button>
-        <button type="button" onClick={() => fitWeeklyCandles(chartRef.current, points, utcDayStartMilliseconds)}>Fit 7D</button>
-        <button type="button" onClick={() => chartRef.current?.timeScale().scrollToRealTime()} aria-label={marketSession?.isOpen === false ? "Jump to last closed candle" : "Jump to live candle"}>{marketSession?.isOpen === false ? "Last" : "Live"}</button>
-        <button type="button" onClick={() => void toggleFullscreen(shellRef.current)} aria-label={isFullscreen ? "Exit fullscreen" : "Open fullscreen"}>{isFullscreen ? "Exit" : "⛶"}</button>
+        <button type="button" title="Line: select two chart points" aria-label="Line" className={drawingTool === "line" ? "active" : ""} aria-pressed={drawingTool === "line"} onClick={() => selectDrawingTool("line")}>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 16 17 4" /><circle cx="3" cy="16" r="1.5" /><circle cx="17" cy="4" r="1.5" /></svg>
+        </button>
+        <button type="button" title="Pencil: drag to draw" aria-label="Freehand draw" className={drawingTool === "draw" ? "active" : ""} aria-pressed={drawingTool === "draw"} onClick={() => selectDrawingTool("draw")}>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 15 1-4L14 2l4 4-9 9-4 1Z" /><path d="m12.5 3.5 4 4M5 11l4 4" /></svg>
+        </button>
+        <button type="button" title="Position: add Entry, TP and SL" aria-label="Position" className={drawingTool === "position" ? "active" : ""} aria-pressed={drawingTool === "position"} onClick={() => selectDrawingTool("position")}>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14" /><path d="m14 2 3 3-3 3M6 7 3 10l3 3M14 12l3 3-3 3" /></svg>
+        </button>
+        <button type="button" title="Clear drawings" aria-label="Clear drawings" onClick={clearDrawings} disabled={!hasDrawings}>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 12 7-7 4 4-7 7H5l-2-2 2-2Z" /><path d="M9 16h8" /></svg>
+        </button>
       </div>
       <button
         type="button"
@@ -584,15 +819,6 @@ function addClosedSessionDisplayBars(
   return displayPoints;
 }
 
-function zoomChart(chart: IChartApi | null, factor: number, pointCount: number) {
-  if (!chart || pointCount === 0) return;
-  const range = chart.timeScale().getVisibleLogicalRange();
-  if (!range) return;
-  const from = Math.max(0, range.from);
-  const span = Math.max(4, (range.to - range.from) * factor);
-  chart.timeScale().setVisibleLogicalRange({ from, to: from + span });
-}
-
 function fitRecentCandles(
   chart: IChartApi | null,
   points: CandlestickData<UTCTimestamp>[],
@@ -625,22 +851,6 @@ function getIntradayWindowStart(latestTimestamp: number) {
     ) / 1_000;
   }
   return latestTimestamp - (INTRADAY_WINDOW_HOURS * 60 * 60);
-}
-
-function fitWeeklyCandles(
-  chart: IChartApi | null,
-  points: CandlestickData<UTCTimestamp>[],
-  utcDayStartMilliseconds: number | null,
-) {
-  if (!chart || points.length === 0 || utcDayStartMilliseconds === null) return;
-  const windowStartSeconds = (utcDayStartMilliseconds - ((WEEK_WINDOW_DAYS - 1) * MILLISECONDS_PER_DAY)) / 1_000;
-  const firstWeeklyIndex = points.findIndex((point) => Number(point.time) >= windowStartSeconds);
-  const firstIndex = firstWeeklyIndex < 0 ? points.length - 1 : firstWeeklyIndex;
-  chart.timeScale().setVisibleRange({
-    from: points[firstIndex].time,
-    to: points[points.length - 1].time,
-  });
-  chart.timeScale().applyOptions({ rightOffset: RIGHT_PADDING_BARS });
 }
 
 function clampPriceMargin(value: number) {
@@ -687,17 +897,150 @@ function applyPriceScaleMargin(chart: IChartApi | null, margin: number) {
   });
 }
 
-async function toggleFullscreen(element: HTMLDivElement | null) {
-  if (!element) return;
-  if (document.fullscreenElement === element) {
-    await document.exitFullscreen();
+function formatChartTime(time: Time): string {
+  if (typeof time === "number") return displayTime.format(new Date(time * 1_000));
+  if (typeof time === "string") return time;
+  return `${String(time.day).padStart(2, "0")}/${String(time.month).padStart(2, "0")}/${time.year}`;
+}
+
+function nearestPositionLevel(
+  chart: IChartApi,
+  series: ISeriesApi<"Candlestick">,
+  drawings: PositionDrawing[],
+  pointerX: number,
+  pointerY: number,
+): { drawing: PositionDrawing; level: PositionLevel; price: number } | null {
+  let nearest: { drawing: PositionDrawing; level: PositionLevel; price: number; distance: number } | null = null;
+  for (const drawing of drawings) {
+    const startX = chart.timeScale().logicalToCoordinate(drawing.startLogical);
+    const endX = chart.timeScale().logicalToCoordinate(drawing.endLogical);
+    const topY = series.priceToCoordinate(Math.max(drawing.outerAPrice, drawing.outerBPrice));
+    const bottomY = series.priceToCoordinate(Math.min(drawing.outerAPrice, drawing.outerBPrice));
+    if (startX === null || endX === null || topY === null || bottomY === null) continue;
+    const left = Math.min(Number(startX), Number(endX));
+    const right = Math.max(Number(startX), Number(endX));
+    const top = Math.min(Number(topY), Number(bottomY));
+    const bottom = Math.max(Number(topY), Number(bottomY));
+    if (pointerY >= top - 10 && pointerY <= bottom + 10) {
+      const startDistance = Math.abs(pointerX - Number(startX));
+      const endDistance = Math.abs(pointerX - Number(endX));
+      if (startDistance <= 10 && (!nearest || startDistance < nearest.distance)) {
+        nearest = { drawing, level: "start", price: drawing.entryPrice, distance: startDistance };
+      }
+      if (endDistance <= 10 && (!nearest || endDistance < nearest.distance)) {
+        nearest = { drawing, level: "end", price: drawing.entryPrice, distance: endDistance };
+      }
+    }
+    if (pointerX < left - 10 || pointerX > right + 10) continue;
+    const levels: Array<[PositionLevel, number]> = [
+      ["entry", drawing.entryPrice],
+      ["outerA", drawing.outerAPrice],
+      ["outerB", drawing.outerBPrice],
+    ];
+    for (const [level, priceValue] of levels) {
+      const coordinate = series.priceToCoordinate(priceValue);
+      if (coordinate === null) continue;
+      const distance = Math.abs(Number(coordinate) - pointerY);
+      if (distance <= 10 && (!nearest || distance < nearest.distance)) {
+        nearest = { drawing, level, price: priceValue, distance };
+      }
+    }
+  }
+  return nearest;
+}
+
+function movePositionTime(drawing: PositionDrawing, level: "start" | "end", nextLogical: Logical) {
+  const minimumWidth = 1;
+  if (level === "start") {
+    drawing.startLogical = Math.min(Number(nextLogical), Number(drawing.endLogical) - minimumWidth) as Logical;
   } else {
-    await element.requestFullscreen();
+    drawing.endLogical = Math.max(Number(nextLogical), Number(drawing.startLogical) + minimumWidth) as Logical;
   }
 }
 
-function formatChartTime(time: Time): string {
-  if (typeof time === "number") return utcTime.format(new Date(time * 1_000));
-  if (typeof time === "string") return time;
-  return `${String(time.day).padStart(2, "0")}/${String(time.month).padStart(2, "0")}/${time.year}`;
+function movePositionLevel(
+  drawing: PositionDrawing,
+  level: Exclude<PositionLevel, "start" | "end">,
+  nextPrice: number,
+  previousPrice: number,
+) {
+  if (level === "entry") {
+    const delta = nextPrice - previousPrice;
+    drawing.entryPrice += delta;
+    drawing.outerAPrice += delta;
+    drawing.outerBPrice += delta;
+  } else {
+    const changedKey = level === "outerA" ? "outerAPrice" : "outerBPrice";
+    const otherKey = level === "outerA" ? "outerBPrice" : "outerAPrice";
+    const previousSide = Math.sign(drawing[changedKey] - drawing.entryPrice) || 1;
+    const minimumDistance = Math.max(0.01, Math.abs(drawing.entryPrice) * 0.00001);
+    drawing[changedKey] = Math.abs(nextPrice - drawing.entryPrice) < minimumDistance
+      ? drawing.entryPrice + previousSide * minimumDistance
+      : nextPrice;
+    const changedSide = Math.sign(drawing[changedKey] - drawing.entryPrice);
+    const otherSide = Math.sign(drawing[otherKey] - drawing.entryPrice);
+    if (changedSide === otherSide || otherSide === 0) {
+      const otherDistance = Math.max(minimumDistance, Math.abs(drawing[otherKey] - drawing.entryPrice));
+      drawing[otherKey] = drawing.entryPrice - changedSide * otherDistance;
+    }
+  }
+
+}
+
+function projectLineDrawings(
+  chart: IChartApi | null,
+  series: ISeriesApi<"Candlestick"> | null,
+  drawings: LineDrawing[],
+): ProjectedLine[] {
+  if (!chart || !series) return [];
+  return drawings.flatMap((drawing, index) => {
+    const x1 = chart.timeScale().logicalToCoordinate(drawing.start.logical);
+    const y1 = series.priceToCoordinate(drawing.start.price);
+    const x2 = chart.timeScale().logicalToCoordinate(drawing.end.logical);
+    const y2 = series.priceToCoordinate(drawing.end.price);
+    return x1 === null || y1 === null || x2 === null || y2 === null
+      ? []
+      : [{ id: `line-${index}`, x1: Number(x1), y1: Number(y1), x2: Number(x2), y2: Number(y2) }];
+  });
+}
+
+function projectPositionDrawings(
+  chart: IChartApi | null,
+  series: ISeriesApi<"Candlestick"> | null,
+  drawings: PositionDrawing[],
+): ProjectedPosition[] {
+  if (!chart || !series) return [];
+  return drawings.flatMap((drawing, index) => {
+    const startX = chart.timeScale().logicalToCoordinate(drawing.startLogical);
+    const endX = chart.timeScale().logicalToCoordinate(drawing.endLogical);
+    const topY = series.priceToCoordinate(Math.max(drawing.outerAPrice, drawing.outerBPrice));
+    const entryY = series.priceToCoordinate(drawing.entryPrice);
+    const bottomY = series.priceToCoordinate(Math.min(drawing.outerAPrice, drawing.outerBPrice));
+    if (startX === null || endX === null || topY === null || entryY === null || bottomY === null) return [];
+    const left = Math.min(Number(startX), Number(endX));
+    const right = Math.max(Number(startX), Number(endX));
+    const top = Number(topY);
+    const entry = Number(entryY);
+    const bottom = Number(bottomY);
+    return [{
+      id: `position-${index}`,
+      left,
+      right,
+      width: Math.max(1, right - left),
+      top,
+      entryY: entry,
+      bottom,
+      profitHeight: Math.max(0, entry - top),
+      riskHeight: Math.max(0, bottom - entry),
+      handles: [
+        { x: left, y: top }, { x: right, y: top },
+        { x: left, y: entry }, { x: right, y: entry },
+        { x: left, y: bottom }, { x: right, y: bottom },
+      ],
+    }];
+  });
+}
+
+function freehandPath(points: Array<[number, number]>) {
+  return points.map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
 }

@@ -252,6 +252,9 @@ internal sealed class EfLocalSignalStore(
         var signalKeys = signals
             .Where(value => !string.IsNullOrWhiteSpace(value.SignalKey))
             .ToDictionary(value => value.Id, value => value.SignalKey!, EqualityComparer<Guid>.Default);
+        var signalOpenTimes = signals
+            .Where(value => value.SignalCandleTimeUtc.HasValue)
+            .ToDictionary(value => value.Id, value => value.SignalCandleTimeUtc!.Value, EqualityComparer<Guid>.Default);
         var stopEvents = await dbContext.TradingSignalLifecycleEvents.AsNoTracking()
             .Where(value => signalIds.Contains(value.TradingSignalId) && value.EventType == "STOPPED")
             .OrderBy(value => value.CandleTimeUtc)
@@ -266,6 +269,12 @@ internal sealed class EfLocalSignalStore(
         foreach (var stopEvent in stopEvents)
         {
             if (!signalKeys.TryGetValue(stopEvent.TradingSignalId, out var signalKey))
+            {
+                continue;
+            }
+
+            if (signalOpenTimes.TryGetValue(stopEvent.TradingSignalId, out var signalOpenTime)
+                && stopEvent.CandleTimeUtc <= signalOpenTime)
             {
                 continue;
             }

@@ -135,7 +135,7 @@ internal sealed class AiProviderAccountStatusService(
         }
 
         remaining ??= used.HasValue && limit.HasValue ? Math.Max(0, limit.Value - used.Value) : null;
-        if (remaining is <= 0 && limit.HasValue)
+        if (remaining is <= 0 && limit.HasValue && isFreeTier != false)
         {
             var usage = used.HasValue ? $"{used}/{limit}" : $"{limit}/{limit}";
             return QuotaExhausted(
@@ -147,9 +147,11 @@ internal sealed class AiProviderAccountStatusService(
                 checkedAtUtc);
         }
 
-        var message = remaining.HasValue
-            ? $"OpenRouter is ready with {remaining} free-model daily requests remaining."
-            : "OpenRouter authentication is ready; no free-model daily limit was reported.";
+        var message = isFreeTier == false && remaining is <= 0
+            ? "OpenRouter funded access is ready; the free-model daily quota is exhausted, so paid primary models remain available."
+            : remaining.HasValue
+                ? $"OpenRouter is ready with {remaining} free-model daily requests remaining."
+                : "OpenRouter authentication is ready; no free-model daily limit was reported.";
         return new AiProviderAccountStatus(
             provider,
             AiProviderAccountStates.Available,

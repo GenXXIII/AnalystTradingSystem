@@ -2,9 +2,9 @@
 
 Full Analyst is disabled by default. Enable `FULL_ANALYST_ENABLED` only after SQL persistence, technical analysis, evidence ingestion, and all eight Full AI workspaces are configured.
 
-Each workspace uses its own `FULL_<WORKSPACE>_AI_*` settings for provider, API key, model, base URL, timeout, token limit, temperature, rate limit, prompt version, and configuration version. `FULL_AI_API_KEY` is an optional Full-only shared key; a workspace-specific key takes precedence. Full workspaces do not implicitly read Target Analyst credentials.
+Each workspace uses its own `FULL_<WORKSPACE>_AI_*` settings for provider, API key, primary model, ordered fallback models, base URL, timeout, token limit, temperature, rate limit, prompt version, and configuration version. `FULL_AI_API_KEY` is an optional Full-only shared key; a workspace-specific key takes precedence. Full workspaces do not implicitly read Target Analyst credentials.
 
-For temporary development with OpenRouter's free router, set `FULL_AI_API_KEY`, enable each workspace, and use `OpenRouter`, `openrouter/free`, and `https://openrouter.ai/api/v1/` for its provider, model, and base URL. The ignored local `.env` may explicitly assign `FULL_AI_API_KEY=${TARGET_AI_API_KEY}` when both systems intentionally share one OpenRouter account.
+The recommended Groq profile is applied with `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\set-groq-ai-profile.ps1` after `GROQ_API_KEY` is set in `.env`. Future stays independent on `openai/gpt-oss-20b`, with automatic fallbacks to `qwen/qwen3.8-27b` and `openai/gpt-oss-120b`. Identical terminal snapshots reuse SQL results for five minutes. New snapshots pass a zero-token market gate; Structure and Flow scout first, KTR is only a tie-breaker, and the remaining specialists, Risk, and Master are lazy. Evidence is capped at six items and 2,000 compressed characters per workspace, with a 9,000-token run budget. A dedicated `FULL_AI_API_KEY` can still override the shared Groq key without reading Target credentials.
 
 Useful endpoints:
 

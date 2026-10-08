@@ -51,6 +51,9 @@ internal sealed class TargetWorkspaceRunner(
                 cancellationToken);
             var completion = await providerFactory.Create(configuration.Adapter)
                 .AnalyzeAsync(request, configuration, cancellationToken);
+            var effectiveConfiguration = string.IsNullOrWhiteSpace(completion.Model)
+                ? configuration
+                : configuration with { Model = completion.Model };
             outputJson = completion.Json;
             var completedAt = timeProvider.GetUtcNow().ToUniversalTime();
             var specialist = isMaster
@@ -69,7 +72,7 @@ internal sealed class TargetWorkspaceRunner(
                 specialist,
                 master,
                 outputJson,
-                configuration,
+                effectiveConfiguration,
                 completion.InputTokens,
                 completion.OutputTokens,
                 completion.LatencyMilliseconds,

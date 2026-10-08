@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { AiProviderAccountStatus } from "@/features/analysis/api/ai-provider-status";
 import type { LocalAnalystStatus } from "@/features/analysis/api/get-local-analyst";
 import type { MarketTimeframeCode } from "@/features/market/api/get-pipeline-data";
+import { DISPLAY_TIME_ZONE, DISPLAY_TIME_ZONE_LABEL } from "@/lib/time/utc-plus-seven";
 import {
   cancelTargetAnalysis,
   createTargetAnalysis,
@@ -17,14 +18,13 @@ import {
 
 const price = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
-const utcDate = new Intl.DateTimeFormat("en-GB", {
+const displayDate = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
   month: "short",
   hour: "2-digit",
   minute: "2-digit",
   hour12: false,
-  timeZone: "UTC",
-  timeZoneName: "short",
+  timeZone: DISPLAY_TIME_ZONE,
 });
 
 export function TargetAnalystWorkspace({ timeframe, localStatus, onResultChange }: Readonly<{
@@ -274,7 +274,7 @@ function formatRatio(value: number | null): string {
 }
 
 function formatDate(value: string | null): string {
-  return value ? utcDate.format(new Date(value)) : "—";
+  return value ? `${displayDate.format(new Date(value))} ${DISPLAY_TIME_ZONE_LABEL}` : "—";
 }
 
 function message(error: unknown): string {

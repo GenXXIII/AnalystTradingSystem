@@ -327,12 +327,14 @@ public static class DependencyInjection
             EvidenceLookbackHours = targetAnalystOptions.EvidenceLookbackHours,
             MaximumEvidenceItemsPerWorkspace = targetAnalystOptions.MaximumEvidenceItemsPerWorkspace,
             MaximumCompressedCharacters = targetAnalystOptions.MaximumCompressedCharacters,
+            MaximumTotalTokens = targetAnalystOptions.MaximumTotalTokens,
             MinimumMarketTimeframes = targetAnalystOptions.MinimumMarketTimeframes,
             StaleAfterIntervals = targetAnalystOptions.StaleAfterIntervals,
             MinimumConfidence = targetAnalystOptions.MinimumConfidence,
             MinimumTargetDistanceAtr = targetAnalystOptions.MinimumTargetDistanceAtr,
             DefaultValidityMinutes = targetAnalystOptions.DefaultValidityMinutes,
             MaximumValidityMinutes = targetAnalystOptions.MaximumValidityMinutes,
+            CacheMinutes = targetAnalystOptions.CacheMinutes,
             MonitorIntervalSeconds = targetAnalystOptions.MonitorIntervalSeconds,
             MaximumPageSize = targetAnalystOptions.MaximumPageSize,
             ConfigurationVersion = targetAnalystOptions.ConfigurationVersion
@@ -362,6 +364,7 @@ public static class DependencyInjection
             EvidenceLookbackHours = fullAnalystOptions.EvidenceLookbackHours,
             MaximumEvidenceItemsPerWorkspace = fullAnalystOptions.MaximumEvidenceItemsPerWorkspace,
             MaximumCompressedCharacters = fullAnalystOptions.MaximumCompressedCharacters,
+            MaximumTotalTokens = fullAnalystOptions.MaximumTotalTokens,
             MinimumMarketTimeframes = fullAnalystOptions.MinimumMarketTimeframes,
             StaleAfterIntervals = fullAnalystOptions.StaleAfterIntervals,
             MinimumConfidence = fullAnalystOptions.MinimumConfidence,
@@ -630,10 +633,12 @@ public static class DependencyInjection
         options.RequiresApiKey,
         options.ApiKey,
         options.Model,
+        ParseModels(options.FallbackModels),
         options.BaseUrl,
         options.Temperature,
         options.TimeoutSeconds,
         options.MaxOutputTokens,
+        options.DisableReasoning,
         options.MaxRetries,
         options.RequestsPerMinute,
         options.PromptVersion,
@@ -649,12 +654,18 @@ public static class DependencyInjection
         options.RequiresApiKey,
         options.ApiKey,
         options.Model,
+        ParseModels(options.FallbackModels),
         options.BaseUrl,
         options.Temperature,
         options.TimeoutSeconds,
         options.MaxOutputTokens,
+        options.DisableReasoning,
         options.MaxRetries,
         options.RequestsPerMinute,
         options.PromptVersion,
         options.ConfigurationVersion);
+
+    private static IReadOnlyList<string> ParseModels(string value) =>
+        [.. value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
 }

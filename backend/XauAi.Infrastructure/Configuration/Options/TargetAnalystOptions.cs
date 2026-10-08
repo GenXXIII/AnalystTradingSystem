@@ -12,9 +12,11 @@ public sealed class TargetAnalystOptions
 
     public int EvidenceLookbackHours { get; set; } = 720;
 
-    public int MaximumEvidenceItemsPerWorkspace { get; set; } = 50;
+    public int MaximumEvidenceItemsPerWorkspace { get; set; } = 12;
 
-    public int MaximumCompressedCharacters { get; set; } = 32_000;
+    public int MaximumCompressedCharacters { get; set; } = 4_000;
+
+    public int MaximumTotalTokens { get; set; } = 20_000;
 
     public int MinimumMarketTimeframes { get; set; } = 3;
 
@@ -27,6 +29,8 @@ public sealed class TargetAnalystOptions
     public int DefaultValidityMinutes { get; set; } = 240;
 
     public int MaximumValidityMinutes { get; set; } = 1_440;
+
+    public int CacheMinutes { get; set; } = 5;
 
     public int MonitorIntervalSeconds { get; set; } = 30;
 
@@ -70,13 +74,17 @@ public sealed class TargetAiWorkspaceOptions
 
     public string Model { get; set; } = string.Empty;
 
+    public string FallbackModels { get; set; } = string.Empty;
+
     public string BaseUrl { get; set; } = string.Empty;
 
     public double Temperature { get; set; } = 0.1;
 
     public int TimeoutSeconds { get; set; } = 90;
 
-    public int MaxOutputTokens { get; set; } = 2_500;
+    public int MaxOutputTokens { get; set; } = 700;
+
+    public bool DisableReasoning { get; set; } = true;
 
     public int MaxRetries { get; set; } = 2;
 

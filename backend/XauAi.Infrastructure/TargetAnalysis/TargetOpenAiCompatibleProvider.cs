@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using XauAi.Application.TargetAnalysis;
 
@@ -13,7 +14,10 @@ internal sealed class TargetOpenAiCompatibleProvider(
     TimeProvider timeProvider,
     ILogger<TargetOpenAiCompatibleProvider> logger) : ITargetAiProvider
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
     public string Adapter => "OpenAiCompatible";
 
@@ -23,13 +27,16 @@ internal sealed class TargetOpenAiCompatibleProvider(
         CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
+        var isGroq = string.Equals(configuration.Provider, "Groq", StringComparison.OrdinalIgnoreCase);
+        var models = ModelCandidates(configuration.Model, configuration.FallbackModels);
+        var modelIndex = 0;
         for (var attempt = 0; ; attempt++)
         {
             try
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeout.CancelAfter(TimeSpan.FromSeconds(configuration.TimeoutSeconds));
-                using var message = CreateRequest(request, configuration);
+                using var message = CreateRequest(request, configuration, models[modelIndex]);
                 using var response = await httpClient.SendAsync(
                     message,
                     HttpCompletionOption.ResponseHeadersRead,
@@ -37,9 +44,21 @@ internal sealed class TargetOpenAiCompatibleProvider(
                 if (!response.IsSuccessStatusCode)
                 {
                     var exception = Failure(response.StatusCode);
-                    if (attempt < configuration.MaxRetries && IsTransient(response.StatusCode))
+                    if (response.StatusCode != HttpStatusCode.TooManyRequests
+                        && attempt < configuration.MaxRetries
+                        && IsTransient(response.StatusCode))
                     {
                         await DelayAsync(attempt, cancellationToken);
+                        continue;
+                    }
+
+                    if ((response.StatusCode == HttpStatusCode.TooManyRequests
+                            || IsTransient(response.StatusCode)
+                            || isGroq && response.StatusCode == HttpStatusCode.BadRequest)
+                        && modelIndex < models.Count - 1)
+                    {
+                        modelIndex++;
+                        attempt = -1;
                         continue;
                     }
 
@@ -63,13 +82,21 @@ internal sealed class TargetOpenAiCompatibleProvider(
                     checked((int)Math.Min(stopwatch.ElapsedMilliseconds, int.MaxValue)),
                     response.Headers.TryGetValues("x-request-id", out var values)
                         ? values.FirstOrDefault()
-                        : null);
+                        : null,
+                    ReadModel(document.RootElement));
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
                 if (attempt < configuration.MaxRetries)
                 {
                     await DelayAsync(attempt, cancellationToken);
+                    continue;
+                }
+
+                if (modelIndex < models.Count - 1)
+                {
+                    modelIndex++;
+                    attempt = -1;
                     continue;
                 }
 
@@ -83,6 +110,13 @@ internal sealed class TargetOpenAiCompatibleProvider(
                 if (attempt < configuration.MaxRetries)
                 {
                     await DelayAsync(attempt, cancellationToken);
+                    continue;
+                }
+
+                if (modelIndex < models.Count - 1)
+                {
+                    modelIndex++;
+                    attempt = -1;
                     continue;
                 }
 
@@ -103,8 +137,11 @@ internal sealed class TargetOpenAiCompatibleProvider(
 
     private static HttpRequestMessage CreateRequest(
         TargetAiRequest request,
-        TargetWorkspaceConfiguration configuration)
+        TargetWorkspaceConfiguration configuration,
+        string model)
     {
+        var isOpenRouter = string.Equals(configuration.Provider, "OpenRouter", StringComparison.OrdinalIgnoreCase);
+        var isGroq = string.Equals(configuration.Provider, "Groq", StringComparison.OrdinalIgnoreCase);
         var message = new HttpRequestMessage(HttpMethod.Post, ResolveEndpoint(configuration.BaseUrl));
         if (!string.IsNullOrWhiteSpace(configuration.ApiKey))
         {
@@ -114,9 +151,15 @@ internal sealed class TargetOpenAiCompatibleProvider(
         message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         message.Content = JsonContent.Create(new
         {
-            model = configuration.Model,
+            model,
+            models = isOpenRouter && configuration.FallbackModels.Count > 0 ? configuration.FallbackModels : null,
             temperature = configuration.Temperature,
             max_tokens = configuration.MaxOutputTokens,
+            reasoning = isOpenRouter && configuration.DisableReasoning ? new { enabled = false } : null,
+            reasoning_effort = isGroq && configuration.DisableReasoning
+                ? model.StartsWith("qwen/", StringComparison.OrdinalIgnoreCase) ? "none" : "low"
+                : null,
+            usage = isOpenRouter ? new { include = true } : null,
             messages = new object[]
             {
                 new { role = "system", content = SystemPrompt(request) },
@@ -139,6 +182,12 @@ internal sealed class TargetOpenAiCompatibleProvider(
         }, options: SerializerOptions);
         return message;
     }
+
+    private static IReadOnlyList<string> ModelCandidates(string primary, IReadOnlyList<string> fallbacks) =>
+        [.. new[] { primary }
+            .Concat(fallbacks)
+            .Where(model => !string.IsNullOrWhiteSpace(model))
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
 
     private static string SystemPrompt(TargetAiRequest request)
     {
@@ -182,7 +231,7 @@ internal sealed class TargetOpenAiCompatibleProvider(
                 candidateTargetPrice = NullableNumber(),
                 candidateInvalidationPrice = NullableNumber(),
                 directionContext = new { type = "string", @enum = EnumNames<TargetDirectionContext>() },
-                confidence = new { type = "number", minimum = 0, maximum = 1 },
+                confidence = new { type = "number" },
                 riskAcceptable = new { type = "boolean" },
                 summary = new { type = "string" },
                 reasoning = new
@@ -222,8 +271,8 @@ internal sealed class TargetOpenAiCompatibleProvider(
                 targetPrice = NullableNumber(),
                 invalidationPrice = NullableNumber(),
                 directionContext = new { type = "string", @enum = EnumNames<TargetDirectionContext>() },
-                confidence = new { type = "number", minimum = 0, maximum = 1 },
-                validUntilUtc = new { type = new[] { "string", "null" }, format = "date-time" },
+                confidence = new { type = "number" },
+                validUntilUtc = new { type = new[] { "string", "null" } },
                 reasoningSummary = new { type = "string" },
                 uncertainty = new { type = "string" },
                 evidenceIds,
@@ -243,8 +292,7 @@ internal sealed class TargetOpenAiCompatibleProvider(
     private static object EvidenceIdsSchema() => new
     {
         type = "array",
-        items = new { type = "string", format = "uuid" },
-        uniqueItems = true
+        items = new { type = "string" }
     };
 
     private static object NullableNumber() => new { type = new[] { "number", "null" } };
@@ -296,6 +344,11 @@ internal sealed class TargetOpenAiCompatibleProvider(
             ? secondValue
             : null;
     }
+
+    private static string? ReadModel(JsonElement root) =>
+        root.TryGetProperty("model", out var model) && model.ValueKind == JsonValueKind.String
+            ? model.GetString()
+            : null;
 
     private static bool IsTransient(HttpStatusCode statusCode) =>
         statusCode == HttpStatusCode.RequestTimeout

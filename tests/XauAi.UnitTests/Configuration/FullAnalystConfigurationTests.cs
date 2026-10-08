@@ -16,6 +16,8 @@ public sealed class FullAnalystConfigurationTests
             ["FULL_STRUCTURE_AI_PROVIDER"] = "OpenRouter",
             ["FULL_STRUCTURE_AI_API_KEY"] = "full-structure-secret",
             ["FULL_STRUCTURE_AI_MODEL"] = "structure-model",
+            ["FULL_STRUCTURE_AI_FALLBACK_MODELS"] = "fallback-a,fallback-b",
+            ["FULL_STRUCTURE_AI_DISABLE_REASONING"] = "true",
             ["FULL_STRUCTURE_AI_BASE_URL"] = "https://openrouter.ai/api/v1",
             ["FULL_MASTER_AI_PROVIDER"] = "DifferentProvider",
             ["FULL_MASTER_AI_API_KEY"] = "full-master-secret",
@@ -32,6 +34,8 @@ public sealed class FullAnalystConfigurationTests
         Assert.True(analyst.Enabled);
         Assert.NotNull(workspaces);
         Assert.Equal("full-structure-secret", workspaces.Structure.ApiKey);
+        Assert.Equal("fallback-a,fallback-b", workspaces.Structure.FallbackModels);
+        Assert.True(workspaces.Structure.DisableReasoning);
         Assert.Equal("full-master-secret", workspaces.Master.ApiKey);
         Assert.NotEqual(workspaces.Structure.ApiKey, workspaces.Master.ApiKey);
     }

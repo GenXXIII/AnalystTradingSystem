@@ -32,15 +32,20 @@ internal sealed class TargetAnalystService(
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
     };
 
-    private static readonly TargetWorkspace[] SpecialistWorkspaces =
+    private static readonly TargetWorkspace[] CoreWorkspaces =
     [
         TargetWorkspace.Structure,
+        TargetWorkspace.Flow
+    ];
+
+    private static readonly TargetWorkspace[] SupportingWorkspaces =
+    [
         TargetWorkspace.Liquidity,
         TargetWorkspace.Candle,
-        TargetWorkspace.Flow,
-        TargetWorkspace.Ktr,
         TargetWorkspace.News
     ];
+
+    private static readonly TargetWorkspace[] SpecialistWorkspaces = [.. CoreWorkspaces, TargetWorkspace.Ktr, .. SupportingWorkspaces];
 
     public async Task<TargetAnalysisResult> AnalyzeAsync(
         CreateTargetAnalysisRequest request,
@@ -67,8 +72,6 @@ internal sealed class TargetAnalystService(
                 TargetAnalysisErrorCodes.InvalidState,
                 "Cancel or wait for the active target to finish before generating another target.");
         }
-
-        await EnsureProviderCanGenerateAsync(cancellationToken);
 
         var analysisTime = (request.AnalysisTimeUtc ?? now).ToUniversalTime();
         if (analysisTime > now)
@@ -127,7 +130,39 @@ internal sealed class TargetAnalystService(
                 cancellationToken);
         }
 
-        var specialistTasks = SpecialistWorkspaces.Select(workspace => workspaceRunner.RunSpecialistAsync(
+        var reused = await TryReuseNoTargetAsync(id, context, now, cancellationToken);
+        if (reused is not null)
+        {
+            return reused;
+        }
+
+        if (!TargetGenerationGate.HasDeterministicCandidate(context.Snapshot))
+        {
+            return await NoTargetAsync(
+                id,
+                "DETERMINISTIC_GATE_NO_CANDIDATE",
+                "No AI calls were made because the completed multi-timeframe snapshot had no aligned directional candidate.",
+                "Wait for at least two aligned trend-and-structure timeframes before generating again.",
+                [],
+                cancellationToken);
+        }
+
+        try
+        {
+            await EnsureProviderCanGenerateAsync(cancellationToken);
+        }
+        catch (TargetAnalysisException exception)
+        {
+            return await NoTargetAsync(
+                id,
+                exception.Code,
+                exception.SafeMessage,
+                "The provider readiness check stopped generation before any model tokens were spent.",
+                [],
+                cancellationToken);
+        }
+
+        var coreTasks = CoreWorkspaces.Select(workspace => workspaceRunner.RunSpecialistAsync(
             new TargetAiRequest(
                 workspace,
                 symbol,
@@ -137,7 +172,66 @@ internal sealed class TargetAnalystService(
                 BuildSpecialistPayload(workspace, context),
                 context.Evidence[workspace].Compressed.EvidenceIds),
             cancellationToken));
-        var runs = (await Task.WhenAll(specialistTasks)).ToList();
+        var runs = (await Task.WhenAll(coreTasks)).ToList();
+        var scoutDirection = TargetGenerationGate.CandidateDirection(runs, settings.MinimumConfidence, 2);
+        if (scoutDirection is null)
+        {
+            runs.Add(await workspaceRunner.RunSpecialistAsync(
+                new TargetAiRequest(
+                    TargetWorkspace.Ktr,
+                    symbol,
+                    timeframe.Code(),
+                    analysisTime,
+                    workspaceCatalog.Get(TargetWorkspace.Ktr).PromptVersion,
+                    BuildSpecialistPayload(TargetWorkspace.Ktr, context),
+                    context.Evidence[TargetWorkspace.Ktr].Compressed.EvidenceIds),
+                cancellationToken));
+            scoutDirection = TargetGenerationGate.CandidateDirection(runs, settings.MinimumConfidence, 2);
+        }
+        if (scoutDirection is null)
+        {
+            return await NoTargetAsync(
+                id,
+                "SCOUT_GATE_NO_CANDIDATE",
+                "The low-cost core scouts did not independently confirm one target direction.",
+                "Risk, supporting specialists, and Master were skipped to protect the token budget.",
+                runs,
+                cancellationToken);
+        }
+
+        var supportingTasks = SupportingWorkspaces.Select(workspace => workspaceRunner.RunSpecialistAsync(
+            new TargetAiRequest(
+                workspace,
+                symbol,
+                timeframe.Code(),
+                analysisTime,
+                workspaceCatalog.Get(workspace).PromptVersion,
+                BuildSpecialistPayload(workspace, context),
+                context.Evidence[workspace].Compressed.EvidenceIds),
+            cancellationToken));
+        runs.AddRange(await Task.WhenAll(supportingTasks));
+        if (TargetGenerationGate.CandidateDirection(runs, settings.MinimumConfidence, 3) is not { } confirmedDirection
+            || confirmedDirection != scoutDirection)
+        {
+            return await NoTargetAsync(
+                id,
+                "SPECIALIST_GATE_NO_CANDIDATE",
+                "The broader specialist set did not preserve the core scouts' direction.",
+                "Risk and Master were skipped because confirmation was weak or conflicting.",
+                runs,
+                cancellationToken);
+        }
+
+        if (TokenCount(runs) >= settings.MaximumTotalTokens)
+        {
+            return await NoTargetAsync(
+                id,
+                TargetAnalysisErrorCodes.TokenLimit,
+                "The Target Analyst token budget was exhausted before risk synthesis.",
+                "The bounded specialist set consumed the configured run budget.",
+                runs,
+                cancellationToken);
+        }
 
         var riskRun = await workspaceRunner.RunSpecialistAsync(
             new TargetAiRequest(
@@ -150,6 +244,16 @@ internal sealed class TargetAnalystService(
                 context.Snapshot.EvidenceIds),
             cancellationToken);
         runs.Add(riskRun);
+        if (TokenCount(runs) >= settings.MaximumTotalTokens)
+        {
+            return await NoTargetAsync(
+                id,
+                TargetAnalysisErrorCodes.TokenLimit,
+                "The Target Analyst token budget was exhausted before master synthesis.",
+                "Risk analysis completed, but another provider call would exceed the configured run budget.",
+                runs,
+                cancellationToken);
+        }
 
         var masterRun = await workspaceRunner.RunMasterAsync(
             new TargetAiRequest(
@@ -162,6 +266,7 @@ internal sealed class TargetAnalystService(
                 context.Snapshot.EvidenceIds),
             cancellationToken);
         runs.Add(masterRun);
+        LogBudgetUsage(id, runs);
 
         var master = masterRun.MasterOutput;
         if (masterRun.Status != TargetWorkspaceExecutionStatus.Completed || master is null)
@@ -562,6 +667,14 @@ internal sealed class TargetAnalystService(
         var evidenceVersion = Hash(string.Join('|', selections.Values
             .Select(package => package.Selection.EvidenceVersion)
             .Order(StringComparer.Ordinal)));
+        var marketVersion = Hash(string.Join('|', frames.Select(frame =>
+            $"{frame.Timeframe}:{frame.LastCandleCloseTimeUtc:O}:{frame.Open}:{frame.High}:{frame.Low}:{frame.Close}:{frame.TickVolume}")));
+        var configurationVersion = Hash(string.Join('|', Enum.GetValues<TargetWorkspace>().Select(workspace =>
+            $"{workspace}:{workspaceCatalog.Get(workspace).ConfigurationVersion}:{workspaceCatalog.Get(workspace).PromptVersion}")));
+        var localVersion = localSignal is null
+            ? "unavailable"
+            : Hash($"{localSignal.ConfigurationVersion}|{localSignal.SignalCandleId}|{localSignal.State}|{localSignal.OriginDirection}|{localSignal.Score}|{localSignal.Confidence}");
+        var stateHash = Hash($"{symbol}|{requestedTimeframe}|{marketVersion}|{evidenceVersion}|{configurationVersion}|{localVersion}");
         var providers = frames
             .GroupBy(frame => frame.Timeframe.Code())
             .ToDictionary(group => group.Key, group => group.First().Provider);
@@ -578,7 +691,8 @@ internal sealed class TargetAnalystService(
                 ["evidence"] = evidenceVersion,
                 ["technicalAnalysis"] = "phase6-v1",
                 ["localAnalyst"] = localSignal?.ConfigurationVersion ?? "unavailable",
-                ["marketSnapshot"] = Hash(string.Join('|', frames.Select(frame => $"{frame.Timeframe}:{frame.LastCandleCloseTimeUtc:O}:{frame.Close}")))
+                ["marketSnapshot"] = marketVersion,
+                ["state"] = stateHash
             },
             [.. selectedEvidence.Keys.Order()],
             providers,
@@ -605,9 +719,9 @@ internal sealed class TargetAnalystService(
         var package = context.Evidence[workspace];
         return JsonSerializer.Serialize(new
         {
-            snapshot = context.Snapshot,
+            snapshot = PromptSnapshot(context.Snapshot),
             evidencePackage = JsonSerializer.Deserialize<JsonElement>(package.Compressed.Json),
-            priorInterpretations = RelevantPrior(context, package.Compressed.EvidenceIds)
+            priorInterpretations = PromptPrior(RelevantPrior(context, package.Compressed.EvidenceIds))
         }, SerializerOptions);
     }
 
@@ -616,7 +730,7 @@ internal sealed class TargetAnalystService(
         IReadOnlyList<TargetWorkspaceRunResult> runs) =>
         JsonSerializer.Serialize(new
         {
-            snapshot = context.Snapshot,
+            snapshot = PromptSnapshot(context.Snapshot),
             targetPolicy = new
             {
                 settings.MinimumConfidence,
@@ -627,7 +741,7 @@ internal sealed class TargetAnalystService(
             },
             evidencePackage = JsonSerializer.Deserialize<JsonElement>(context.Evidence[TargetWorkspace.Risk].Compressed.Json),
             specialistResults = runs.Select(ForSynthesis),
-            priorInterpretations = context.PriorInterpretations
+            priorInterpretations = PromptPrior(context.PriorInterpretations)
         }, SerializerOptions);
 
     private string BuildMasterPayload(
@@ -635,7 +749,7 @@ internal sealed class TargetAnalystService(
         IReadOnlyList<TargetWorkspaceRunResult> runs) =>
         JsonSerializer.Serialize(new
         {
-            snapshot = context.Snapshot,
+            snapshot = PromptSnapshot(context.Snapshot),
             targetPolicy = new
             {
                 settings.MinimumConfidence,
@@ -646,7 +760,7 @@ internal sealed class TargetAnalystService(
             },
             specialistResults = runs.Select(ForSynthesis),
             evidenceConflicts = context.Snapshot.Conflicts,
-            priorInterpretations = context.PriorInterpretations
+            priorInterpretations = PromptPrior(context.PriorInterpretations)
         }, SerializerOptions);
 
     private static object ForSynthesis(TargetWorkspaceRunResult run) => new
@@ -659,6 +773,132 @@ internal sealed class TargetAnalystService(
         run.Configuration.PromptVersion,
         run.Configuration.ConfigurationVersion
     };
+
+    private static object PromptSnapshot(TargetAnalysisSnapshot snapshot) => new
+    {
+        snapshot.Symbol,
+        snapshot.CurrentPrice,
+        snapshot.AnalysisTimeUtc,
+        snapshot.RequestedTimeframe,
+        snapshot.CurrentMarketState,
+        snapshot.CandleState,
+        marketFrames = snapshot.MarketFrames.Select(frame => new
+        {
+            frame.Timeframe,
+            frame.LastCandleCloseTimeUtc,
+            frame.Open,
+            frame.High,
+            frame.Low,
+            frame.Close,
+            frame.TickVolume,
+            frame.Trend,
+            frame.Structure,
+            frame.Momentum,
+            frame.Volatility,
+            frame.Atr,
+            importantLevels = frame.ImportantLevels.Take(8),
+            candleSignals = frame.CandleSignals.Take(6),
+            conflicts = frame.Conflicts.Take(4)
+        }),
+        conflicts = snapshot.Conflicts.Take(8),
+        localSignal = snapshot.LocalSignal is null ? null : new
+        {
+            snapshot.LocalSignal.State,
+            snapshot.LocalSignal.OriginDirection,
+            snapshot.LocalSignal.SignalPrice,
+            snapshot.LocalSignal.Score,
+            snapshot.LocalSignal.MaxScore,
+            snapshot.LocalSignal.Confidence,
+            snapshot.LocalSignal.StructureState,
+            snapshot.LocalSignal.LiquidityState,
+            snapshot.LocalSignal.CandleState,
+            snapshot.LocalSignal.MomentumState,
+            snapshot.LocalSignal.KtrState,
+            snapshot.LocalSignal.VolatilityState,
+            snapshot.LocalSignal.InvalidationPrice,
+            snapshot.LocalSignal.TargetPrice,
+            snapshot.LocalSignal.ValidUntilUtc
+        }
+    };
+
+    private static IEnumerable<object> PromptPrior(IEnumerable<PriorTargetInterpretation> items) =>
+        items.Take(12).Select(item => new
+        {
+            item.Specialist,
+            item.InterpretationType,
+            item.Direction,
+            item.Confidence,
+            Summary = Limit(item.Summary, 300),
+            EvidenceIds = item.EvidenceIds.Take(6),
+            item.AnalysisTimeUtc
+        });
+
+    private static int TokenCount(IEnumerable<TargetWorkspaceRunResult> runs) =>
+        runs.Sum(run => (run.InputTokens ?? 0) + (run.OutputTokens ?? 0));
+
+    private async Task<TargetAnalysisResult?> TryReuseNoTargetAsync(
+        Guid analysisId,
+        TargetAnalysisContext context,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (!context.Snapshot.DataVersions.TryGetValue("state", out var stateHash))
+        {
+            return null;
+        }
+
+        var history = await store.QueryAsync(
+            new TargetAnalysisQuery(
+                context.Snapshot.Symbol,
+                context.Snapshot.RequestedTimeframe,
+                TargetAnalysisStatus.NoValidTarget,
+                1,
+                Math.Min(10, settings.MaximumPageSize)),
+            cancellationToken);
+        var cached = history.Items.FirstOrDefault(item =>
+            item.Id != analysisId
+            && item.Snapshot?.DataVersions.TryGetValue("state", out var cachedHash) == true
+            && string.Equals(cachedHash, stateHash, StringComparison.Ordinal)
+            && string.Equals(item.ConfigurationVersion, settings.ConfigurationVersion, StringComparison.Ordinal)
+            && item.SpecialistResults.All(result => result.Status != TargetWorkspaceExecutionStatus.Failed)
+            && now - item.UpdatedAtUtc <= TimeSpan.FromMinutes(settings.CacheMinutes));
+        if (cached is null)
+        {
+            return null;
+        }
+
+        logger.LogInformation(
+            "Target analysis {AnalysisId} reused SQL result {CachedAnalysisId} for unchanged state {StateHash}",
+            analysisId,
+            cached.Id,
+            stateHash);
+        return await store.CompleteNoValidTargetAsync(
+            new TargetNoValidTargetWriteModel(
+                analysisId,
+                cached.NoTargetReason ?? "NO_VALID_TARGET",
+                cached.ReasoningSummary,
+                $"Reused the unchanged SQL snapshot without an AI call. {cached.Uncertainty}",
+                [],
+                cached.Provider,
+                cached.Model,
+                cached.PromptVersion,
+                cached.ConfigurationVersion,
+                timeProvider.GetUtcNow().ToUniversalTime()),
+            cancellationToken);
+    }
+
+    private void LogBudgetUsage(Guid analysisId, IReadOnlyList<TargetWorkspaceRunResult> runs)
+    {
+        var used = TokenCount(runs);
+        if (used > settings.MaximumTotalTokens)
+        {
+            logger.LogWarning(
+                "Target analysis {AnalysisId} used {UsedTokens} tokens, above the configured {TokenBudget} token budget.",
+                analysisId,
+                used,
+                settings.MaximumTotalTokens);
+        }
+    }
 
     private static IReadOnlyList<PriorTargetInterpretation> RelevantPrior(
         TargetAnalysisContext context,

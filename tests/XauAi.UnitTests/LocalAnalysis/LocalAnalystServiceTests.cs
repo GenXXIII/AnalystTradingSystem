@@ -62,6 +62,43 @@ public sealed class LocalAnalystServiceTests
     }
 
     [Fact]
+    public async Task Active_signal_is_not_stopped_on_its_origin_candle_after_configuration_change()
+    {
+        var candles = Candles();
+        var active = Snapshot(
+            candles[^1],
+            LocalSignalState.Buy,
+            "ACTIVE",
+            validUntil: StartUtc.AddDays(2),
+            persistenceId: Guid.NewGuid());
+        var store = new RecordingStore
+        {
+            Active = active,
+            Checkpoint = new LocalAnalystCheckpoint(
+                "XAUUSD",
+                MarketTimeframe.M5,
+                candles[^1].OpenTimeUtc,
+                LocalSignalState.Buy,
+                null,
+                StartUtc,
+                active)
+        };
+        var weakDecision = Decision(candles[^1], LocalSignalState.Buy) with
+        {
+            Score = 0m,
+            Confidence = 0m,
+            Conditions = []
+        };
+        var service = CreateService(candles, store, weakDecision, configurationVersion: "phase12-v2");
+
+        var result = await service.EvaluateAsync("XAUUSD", MarketTimeframe.M5);
+
+        Assert.True(result.IsCached);
+        Assert.Equal(LocalSignalState.Buy, result.State);
+        Assert.Equal(0, store.SaveCalls);
+    }
+
+    [Fact]
     public async Task Same_candle_is_reprocessed_after_retryable_data_failure()
     {
         var candles = Candles();
@@ -122,6 +159,32 @@ public sealed class LocalAnalystServiceTests
         Assert.Equal(active.PersistenceId, store.LastRequest.ExistingSignalId);
         Assert.Equal(LocalSignalState.Stop, result.State);
         Assert.Equal("EXPIRED", result.Reason);
+    }
+
+    [Fact]
+    public async Task Active_setup_stops_when_its_directional_confluence_falls_below_the_entry_threshold()
+    {
+        var candles = Candles();
+        var active = Snapshot(
+            candles[^2],
+            LocalSignalState.Buy,
+            "ACTIVE",
+            validUntil: StartUtc.AddDays(2),
+            persistenceId: Guid.NewGuid());
+        var store = new RecordingStore { Active = active };
+        var weakDecision = Decision(candles[^1], LocalSignalState.Buy) with
+        {
+            Score = 1m,
+            Confidence = 0.166667m,
+            Conditions = [new LocalSignalCondition("Trend", "WeakBullish", true, false, 1m, ["fixture"])]
+        };
+        var service = CreateService(candles, store, weakDecision);
+
+        var result = await service.EvaluateAsync("XAUUSD", MarketTimeframe.M5);
+
+        Assert.Equal(LocalSignalMutation.Stop, store.LastRequest!.Mutation);
+        Assert.Equal(LocalSignalState.Stop, result.State);
+        Assert.Equal("BUY_CONFLUENCE_LOST", result.Reason);
     }
 
     private static LocalAnalystService CreateService(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   getMultiTimeframeAnalysis,
   getTechnicalAnalysis,
@@ -32,9 +32,15 @@ import type {
 
 type TerminalLoadState = "loading" | "ready" | "unavailable";
 const LIVE_SNAPSHOT_CANDLE_LIMIT = 3;
+const timeframeListeners = new Set<() => void>();
+const subscribeHydration = () => () => undefined;
+const hydratedSnapshot = () => true;
+const serverHydratedSnapshot = () => false;
+const serverTimeframeSnapshot = (): MarketTimeframeCode => "M15";
 
 export function useMarketTerminal() {
-  const [timeframe, setTimeframeState] = useState<MarketTimeframeCode>("M15");
+  const timeframe = useSyncExternalStore(subscribeTimeframe, readStoredTimeframe, serverTimeframeSnapshot);
+  const timeframeReady = useSyncExternalStore(subscribeHydration, hydratedSnapshot, serverHydratedSnapshot);
   const [state, setState] = useState<TerminalLoadState>("loading");
   const [provider, setProvider] = useState<MarketProviderStatus | null>(null);
   const [quote, setQuote] = useState<MarketQuote | null>(null);
@@ -121,20 +127,9 @@ export function useMarketTerminal() {
     setState(candlesResult.status === "fulfilled" || quoteResult.status === "fulfilled" ? "ready" : "unavailable");
   }, []);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const saved = window.localStorage.getItem("xauai.market-timeframe");
-      if (saved && isMarketTimeframe(saved)) {
-        setTimeframeState(saved);
-      }
-    }, 0);
-
-    return () => window.clearTimeout(timer);
-  }, []);
-
   const setTimeframe = useCallback((value: MarketTimeframeCode) => {
     window.localStorage.setItem("xauai.market-timeframe", value);
-    setTimeframeState(value);
+    for (const listener of timeframeListeners) listener();
   }, []);
 
   const loadLiveSnapshot = useCallback(async (selectedTimeframe: MarketTimeframeCode) => {
@@ -169,22 +164,25 @@ export function useMarketTerminal() {
   }, []);
 
   useEffect(() => {
+    if (!timeframeReady) return;
     const timer = window.setTimeout(() => void load(timeframe), 0);
     return () => window.clearTimeout(timer);
-  }, [load, timeframe]);
+  }, [load, timeframe, timeframeReady]);
 
   useEffect(() => {
+    if (!timeframeReady) return;
     const timer = window.setInterval(() => void load(timeframe, false), 30_000);
     return () => window.clearInterval(timer);
-  }, [load, timeframe]);
+  }, [load, timeframe, timeframeReady]);
 
   useEffect(() => {
+    if (!timeframeReady) return;
     const timer = window.setInterval(() => void loadLiveSnapshot(timeframe), 5_000);
     return () => {
       window.clearInterval(timer);
       liveSnapshotSequence.current += 1;
     };
-  }, [loadLiveSnapshot, timeframe]);
+  }, [loadLiveSnapshot, timeframe, timeframeReady]);
 
   useEffect(() => {
     let cancelled = false;
@@ -237,6 +235,21 @@ export function useMarketTerminal() {
     isSyncing,
     refresh,
     sync,
+  };
+}
+
+function readStoredTimeframe(): MarketTimeframeCode {
+  if (typeof window === "undefined") return "M15";
+  const saved = window.localStorage.getItem("xauai.market-timeframe");
+  return saved && isMarketTimeframe(saved) ? saved : "M15";
+}
+
+function subscribeTimeframe(listener: () => void) {
+  timeframeListeners.add(listener);
+  window.addEventListener("storage", listener);
+  return () => {
+    timeframeListeners.delete(listener);
+    window.removeEventListener("storage", listener);
   };
 }
 

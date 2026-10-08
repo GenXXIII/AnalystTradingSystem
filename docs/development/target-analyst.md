@@ -18,59 +18,11 @@ TARGET_STRUCTURE_AI_BASE_URL=https://provider.example/v1/
 
 Repeat with `TARGET_LIQUIDITY`, `TARGET_CANDLE`, `TARGET_FLOW`, `TARGET_KTR`, `TARGET_NEWS`, `TARGET_RISK`, and `TARGET_MASTER`. Provider-specific secrets remain server-side. The public configuration endpoint exposes only `hasApiKey`, never the key.
 
-## Current OpenRouter free-router example
+## Recommended Groq profile
 
-OpenRouter uses the OpenAI-compatible chat-completions protocol, so it uses the existing adapter. One shared key can feed all eight workspaces while every workspace remains independently overridable:
+Use Groq for the high-throughput profile. Put only `GROQ_API_KEY` in the ignored `.env`, then run `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\set-groq-ai-profile.ps1`. Target uses `openai/gpt-oss-20b` for scouts, specialists, and Risk; only a confirmed Target Master call uses `openai/gpt-oss-120b`. A rate limit, transient failure, or Groq structured-output rejection advances through `qwen/qwen3.8-27b` and the alternate GPT-OSS model. The response's actual model is persisted with each workspace result.
 
-```env
-TARGET_AI_API_KEY=replace-with-your-openrouter-key
-
-TARGET_STRUCTURE_AI_ENABLED=true
-TARGET_STRUCTURE_AI_PROVIDER=OpenRouter
-TARGET_STRUCTURE_AI_MODEL=openrouter/free
-TARGET_STRUCTURE_AI_BASE_URL=https://openrouter.ai/api/v1/
-
-TARGET_LIQUIDITY_AI_ENABLED=true
-TARGET_LIQUIDITY_AI_PROVIDER=OpenRouter
-TARGET_LIQUIDITY_AI_MODEL=openrouter/free
-TARGET_LIQUIDITY_AI_BASE_URL=https://openrouter.ai/api/v1/
-
-TARGET_CANDLE_AI_ENABLED=true
-TARGET_CANDLE_AI_PROVIDER=OpenRouter
-TARGET_CANDLE_AI_MODEL=openrouter/free
-TARGET_CANDLE_AI_BASE_URL=https://openrouter.ai/api/v1/
-
-TARGET_FLOW_AI_ENABLED=true
-TARGET_FLOW_AI_PROVIDER=OpenRouter
-TARGET_FLOW_AI_MODEL=openrouter/free
-TARGET_FLOW_AI_BASE_URL=https://openrouter.ai/api/v1/
-
-TARGET_KTR_AI_ENABLED=true
-TARGET_KTR_AI_PROVIDER=OpenRouter
-TARGET_KTR_AI_MODEL=openrouter/free
-TARGET_KTR_AI_BASE_URL=https://openrouter.ai/api/v1/
-
-TARGET_NEWS_AI_ENABLED=true
-TARGET_NEWS_AI_PROVIDER=OpenRouter
-TARGET_NEWS_AI_MODEL=openrouter/free
-TARGET_NEWS_AI_BASE_URL=https://openrouter.ai/api/v1/
-
-TARGET_RISK_AI_ENABLED=true
-TARGET_RISK_AI_PROVIDER=OpenRouter
-TARGET_RISK_AI_MODEL=openrouter/free
-TARGET_RISK_AI_BASE_URL=https://openrouter.ai/api/v1/
-
-TARGET_MASTER_AI_ENABLED=true
-TARGET_MASTER_AI_PROVIDER=OpenRouter
-TARGET_MASTER_AI_MODEL=openrouter/free
-TARGET_MASTER_AI_BASE_URL=https://openrouter.ai/api/v1/
-
-TARGET_ANALYST_ENABLED=true
-```
-
-`TARGET_AI_API_KEY` is a shared fallback. Any `TARGET_<WORKSPACE>_AI_API_KEY` takes precedence, so keys can be separated later without code changes. `OPENROUTER_API_KEY`, `AI_API_KEY`, and `OPENAI_API_KEY` are also accepted as compatibility fallbacks, but `TARGET_AI_API_KEY` is clearest for this feature.
-
-The free router may select different eligible free models over time. Structured outputs are still schema-validated. A malformed or unavailable specialist is recorded as failed; a Master failure always becomes `NO VALID TARGET`.
+GPT-OSS reasoning is set to its lowest supported effort and Qwen reasoning is disabled. Identical terminal snapshots reuse SQL results for five minutes. New snapshots pass a zero-token market gate, then Structure and Flow scout first; KTR is called only when they need a tie-breaker. Supporting specialists, Risk, and the 120B Master are lazy. Evidence is capped at six items and 2,000 compressed characters per workspace, with a 10,000-token run budget. A workspace-specific key or `TARGET_AI_API_KEY` still takes precedence over `GROQ_API_KEY` when provider isolation is required.
 
 ## Trigger and inspect
 

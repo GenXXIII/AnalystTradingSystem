@@ -18,6 +18,7 @@ import type {
   EconomicSystemStatus,
 } from "@/features/economic/api/get-economic-data";
 import { getActiveTradingSessions, getXauUsdMarketSession } from "@/lib/market/xauusd-session";
+import { DISPLAY_TIME_ZONE, DISPLAY_TIME_ZONE_LABEL } from "@/lib/time/utc-plus-seven";
 import type { MultiTimeframeAnalysis, TechnicalAnalysis } from "@/types/analysis";
 import type { MarketDataPipelineStatus, MarketDataSourceComparison, MarketProviderStatus } from "@/types/market";
 import type { NewsSystemStatus, PagedNewsArticles } from "@/types/news";
@@ -25,17 +26,17 @@ import type { NewsSystemStatus, PagedNewsArticles } from "@/types/news";
 const price = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const integer = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const economicNumber = new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 });
-const utcDate = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC",
+const displayDate = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: DISPLAY_TIME_ZONE,
+});
+const utcPlusSevenTime = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: DISPLAY_TIME_ZONE,
 });
 const utcTime = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "UTC",
 });
-const utcPlusSevenTime = new Intl.DateTimeFormat("en-GB", {
-  hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "Asia/Bangkok",
-});
 const dateOnly = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit", month: "short", year: "numeric", timeZone: "UTC",
+  day: "2-digit", month: "short", year: "numeric", timeZone: DISPLAY_TIME_ZONE,
 });
 const timeframeLabels: Record<MarketTimeframeCode, string> = {
   M1: "M1", M5: "M5", M15: "M15", M30: "M30", H1: "1H", H4: "4H", D1: "1D",
@@ -54,9 +55,9 @@ export function MarketTerminal() {
   const [activeModule, setActiveModule] = useState<ModuleKey | null>(null);
   const [targetChartResult, setTargetChartResult] = useState<TargetAnalysisResult | null>(null);
   const [fullChartResult, setFullChartResult] = useState<FullAnalysisResult | null>(null);
-  const news = useNewsModule(activeModule === "news" || activeModule === "quality");
-  const economy = useEconomicModule(activeModule === "economy" || activeModule === "quality");
-  const analystHealth = useAnalystHealth(activeModule === "quality");
+  const news = useNewsModule(true);
+  const economy = useEconomicModule(true);
+  const analystHealth = useAnalystHealth(true);
 
   useEffect(() => {
     const initialTimer = window.setTimeout(() => setNow(new Date()), 0);
@@ -78,6 +79,51 @@ export function MarketTerminal() {
   const completedVisible = terminal.candles.filter((item) => item.isComplete).length;
   const twelveDataReady = terminal.sourceComparison?.referenceEnabled === true
     && terminal.sourceComparison.matchedCandles > 0;
+  const localIssues = terminal.localStatus?.timeframes.some((item) => isLocalReadinessFailure(item.lastReason)) ?? true;
+  const targetConfigured = analystHealth.snapshot?.targetConfiguration.filter((item) => item.enabled && item.hasApiKey).length ?? 0;
+  const futureConfigured = analystHealth.snapshot?.futureConfiguration.filter((item) => item.enabled && item.hasApiKey).length ?? 0;
+  const targetFailed = analystHealth.snapshot?.latestTarget?.specialistResults.some((item) => item.status === "Failed") ?? false;
+  const futureFailed = analystHealth.snapshot?.latestFuture?.workspaceResults.some((item) => item.status === "Failed") ?? false;
+  const compactProviderStatuses: CompactProviderStatus[] = [
+    { name: "AllTick", healthy: terminal.provider?.connected === true, detail: terminal.provider?.message ?? "Live market provider is still checking." },
+    { name: "Twelve Data", healthy: twelveDataReady, detail: twelveDataReady ? "Reference candles are ready." : "Reference candles are unavailable." },
+    {
+      name: "SQL",
+      healthy: isHealthyStatus(terminal.pipeline?.synchronization?.status)
+        && (terminal.pipeline?.synchronization?.consecutiveFailures ?? 0) === 0,
+      detail: terminal.pipeline?.synchronization?.lastErrorMessage ?? "Primary candle storage and synchronization.",
+    },
+    {
+      name: "Local",
+      healthy: terminal.localStatus?.enabled === true && !localIssues,
+      detail: terminal.localSignalError ?? "Deterministic local analyst checkpoints.",
+    },
+    {
+      name: "Target",
+      healthy: targetConfigured === 8
+        && !targetFailed
+        && !(analystHealth.snapshot?.targetProviderStatuses.some((item) => !item.canGenerate) ?? true),
+      detail: analystHealth.error ?? `${targetConfigured}/8 Target workspaces ready.`,
+    },
+    {
+      name: "Future",
+      healthy: futureConfigured === 8
+        && !futureFailed
+        && !(analystHealth.snapshot?.futureProviderStatuses.some((item) => !item.canGenerate) ?? true),
+      detail: analystHealth.error ?? `${futureConfigured}/8 Future workspaces ready.`,
+    },
+    {
+      name: news.status?.provider.provider ?? "NewsData",
+      healthy: news.status?.provider.state === "Available" && news.status.collection?.status === "Healthy",
+      detail: news.error ?? news.status?.provider.message ?? "News provider is still checking.",
+    },
+    {
+      name: economy.status?.provider.provider ?? "FRED",
+      healthy: economy.status?.provider.state === "Available"
+        && economy.status.series.every((item) => item.consecutiveFailures === 0),
+      detail: economy.error ?? economy.status?.provider.message ?? "Economic provider is still checking.",
+    },
+  ];
   const systemState = terminal.provider?.connected ? "Operational" : terminal.state === "loading" ? "Checking" : "Attention";
   const marketSession = now ? getXauUsdMarketSession(now) : null;
   const activeTradingSessions = now ? getActiveTradingSessions(now) : [];
@@ -123,10 +169,13 @@ export function MarketTerminal() {
                   ))}
                 </div>
                 <span className="chart-context">XAUUSD</span>
-                <span className="chart-context">UTC</span>
-                <span className={`chart-provider ${terminal.provider?.connected ? "connected" : "waiting"}`} title={terminal.provider?.connected ? "Connected" : "Waiting for provider data"}><StatusDot online={Boolean(terminal.provider?.connected)} />AllTick</span>
-                <span className={`chart-provider ${twelveDataReady ? "connected" : "waiting"}`} title={twelveDataReady ? "Reference data ready" : "Waiting for reference data"}><StatusDot online={twelveDataReady} />Twelve Data</span>
+                <span className="chart-context">UTC+7</span>
                 <span className="chart-session">{activeTradingSessions.length > 0 ? activeTradingSessions.join(" · ") : "Between sessions"}</span>
+                {compactProviderStatuses.map((item) => (
+                  <span className={`chart-provider ${item.healthy ? "connected" : "waiting"}`} title={item.detail} key={item.name}>
+                    <StatusDot online={item.healthy} />{item.name}
+                  </span>
+                ))}
                 <span className="chart-source">SQL history · live forming candle</span>
               </div>
               <TradingChart
@@ -446,6 +495,12 @@ interface HealthRowData {
   message: string;
 }
 
+interface CompactProviderStatus {
+  name: string;
+  healthy: boolean;
+  detail: string;
+}
+
 function ProviderHealthRow({ row }: Readonly<{ row: HealthRowData }>) {
   return (
     <article className="provider-health-row" data-state={row.healthy ? "healthy" : "attention"}>
@@ -597,7 +652,7 @@ function AnalysisTile({ label, value, tone, detail }: Readonly<{ label: string; 
 function StatusDot({ online }: Readonly<{ online: boolean }>) { return <i className="status-dot" data-state={online ? "online" : "offline"} aria-hidden="true" />; }
 function formatPrice(value: number | null | undefined) { return value === null || value === undefined ? "—" : price.format(value); }
 function formatNumber(value: number | null | undefined, digits: number) { return value === null || value === undefined ? "—" : value.toFixed(digits); }
-function formatDate(value: string | null) { return value ? `${utcDate.format(new Date(value))} UTC` : "—"; }
+function formatDate(value: string | null) { return value ? `${displayDate.format(new Date(value))} ${DISPLAY_TIME_ZONE_LABEL}` : "—"; }
 function formatDateOnly(value: string) { return dateOnly.format(new Date(`${value}T00:00:00Z`)); }
 function formatEconomicValue(observation: EconomicObservation, series: EconomicSeries | undefined) {
   const value = observation.value === null ? observation.originalValue : economicNumber.format(observation.value);

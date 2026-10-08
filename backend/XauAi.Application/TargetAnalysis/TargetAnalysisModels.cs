@@ -157,7 +157,8 @@ public sealed record TargetAiCompletion(
     int? InputTokens,
     int? OutputTokens,
     int LatencyMilliseconds,
-    string? ProviderRequestId);
+    string? ProviderRequestId,
+    string? Model = null);
 
 public sealed record TargetWorkspaceConfiguration(
     TargetWorkspace Workspace,
@@ -167,10 +168,12 @@ public sealed record TargetWorkspaceConfiguration(
     bool RequiresApiKey,
     string ApiKey,
     string Model,
+    IReadOnlyList<string> FallbackModels,
     string BaseUrl,
     double Temperature,
     int TimeoutSeconds,
     int MaxOutputTokens,
+    bool DisableReasoning,
     int MaxRetries,
     int RequestsPerMinute,
     string PromptVersion,
@@ -182,10 +185,12 @@ public sealed record TargetWorkspaceConfigurationView(
     string Provider,
     string Adapter,
     string Model,
+    IReadOnlyList<string> FallbackModels,
     string BaseUrl,
     double Temperature,
     int TimeoutSeconds,
     int MaxOutputTokens,
+    bool DisableReasoning,
     int MaxRetries,
     int RequestsPerMinute,
     string PromptVersion,
@@ -340,9 +345,11 @@ public sealed class TargetAnalystSettings
 
     public int EvidenceLookbackHours { get; init; } = 720;
 
-    public int MaximumEvidenceItemsPerWorkspace { get; init; } = 50;
+    public int MaximumEvidenceItemsPerWorkspace { get; init; } = 12;
 
-    public int MaximumCompressedCharacters { get; init; } = 32_000;
+    public int MaximumCompressedCharacters { get; init; } = 4_000;
+
+    public int MaximumTotalTokens { get; init; } = 20_000;
 
     public int MinimumMarketTimeframes { get; init; } = 3;
 
@@ -355,6 +362,8 @@ public sealed class TargetAnalystSettings
     public int DefaultValidityMinutes { get; init; } = 240;
 
     public int MaximumValidityMinutes { get; init; } = 1_440;
+
+    public int CacheMinutes { get; init; } = 5;
 
     public int MonitorIntervalSeconds { get; init; } = 30;
 
@@ -385,10 +394,12 @@ public sealed class TargetWorkspaceCatalog(IEnumerable<TargetWorkspaceConfigurat
                 configuration.Provider,
                 configuration.Adapter,
                 configuration.Model,
+                configuration.FallbackModels,
                 configuration.BaseUrl,
                 configuration.Temperature,
                 configuration.TimeoutSeconds,
                 configuration.MaxOutputTokens,
+                configuration.DisableReasoning,
                 configuration.MaxRetries,
                 configuration.RequestsPerMinute,
                 configuration.PromptVersion,

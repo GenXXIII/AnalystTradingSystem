@@ -102,7 +102,10 @@ internal sealed class EfMarketDataQueryStore(
     {
         var references = await referenceResolver.RequireAsync(symbol, timeframe, cancellationToken);
         return await BaseQuery(references)
-            .Where(candle => candle.OpenTimeUtc >= fromUtc && candle.OpenTimeUtc <= toUtc)
+            .Where(candle =>
+                candle.IsComplete
+                && candle.OpenTimeUtc >= fromUtc
+                && candle.OpenTimeUtc <= toUtc)
             .OrderBy(candle => candle.OpenTimeUtc)
             .Select(candle => candle.OpenTimeUtc)
             .ToArrayAsync(cancellationToken);

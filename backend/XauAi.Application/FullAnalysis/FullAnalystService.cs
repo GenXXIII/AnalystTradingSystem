@@ -30,15 +30,20 @@ internal sealed class FullAnalystService(
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
     };
 
-    private static readonly FullWorkspace[] SpecialistWorkspaces =
+    private static readonly FullWorkspace[] CoreWorkspaces =
     [
         FullWorkspace.Structure,
+        FullWorkspace.Flow
+    ];
+
+    private static readonly FullWorkspace[] SupportingWorkspaces =
+    [
         FullWorkspace.Liquidity,
         FullWorkspace.Candle,
-        FullWorkspace.Flow,
-        FullWorkspace.Ktr,
         FullWorkspace.News
     ];
+
+    private static readonly FullWorkspace[] SpecialistWorkspaces = [.. CoreWorkspaces, FullWorkspace.Ktr, .. SupportingWorkspaces];
 
     public async Task<FullAnalysisResult> AnalyzeAsync(
         CreateFullAnalysisRequest request,
@@ -65,8 +70,6 @@ internal sealed class FullAnalystService(
                 FullAnalysisErrorCodes.InvalidState,
                 "Cancel or wait for the active Future Analyst result to finish before generating another outlook.");
         }
-
-        await EnsureProviderCanGenerateAsync(cancellationToken);
 
         var analysisTime = (request.AnalysisTimeUtc ?? now).ToUniversalTime();
         if (analysisTime > now)
@@ -115,7 +118,37 @@ internal sealed class FullAnalystService(
             return await WaitAsync(id, exception.SafeMessage, "The evidence-quality gate required WAIT.", [], cancellationToken);
         }
 
-        var specialistRuns = await Task.WhenAll(SpecialistWorkspaces.Select(workspace =>
+        var reused = await TryReuseWaitAsync(id, context, now, cancellationToken);
+        if (reused is not null)
+        {
+            return reused;
+        }
+
+        if (!FullGenerationGate.HasDeterministicCandidate(context.Snapshot))
+        {
+            return await WaitAsync(
+                id,
+                "No AI calls were made because the completed multi-timeframe snapshot had no aligned directional candidate.",
+                "Wait for at least two aligned trend-and-structure timeframes before generating again.",
+                [],
+                cancellationToken);
+        }
+
+        try
+        {
+            await EnsureProviderCanGenerateAsync(cancellationToken);
+        }
+        catch (FullAnalysisException exception)
+        {
+            return await WaitAsync(
+                id,
+                exception.SafeMessage,
+                "The provider readiness check stopped generation before any model tokens were spent.",
+                [],
+                cancellationToken);
+        }
+
+        var specialistRuns = await Task.WhenAll(CoreWorkspaces.Select(workspace =>
             workspaceRunner.RunSpecialistAsync(
                 new FullAiRequest(
                     workspace,
@@ -134,6 +167,83 @@ internal sealed class FullAnalystService(
                 id,
                 "One or more Full AI specialists were unavailable.",
                 "A directional state was not forced from an incomplete specialist set.",
+                runs,
+                cancellationToken);
+        }
+        var scoutDirection = FullGenerationGate.CandidateDirection(runs, settings.MinimumConfidence, 2);
+        if (scoutDirection is null)
+        {
+            var tieBreaker = await workspaceRunner.RunSpecialistAsync(
+                new FullAiRequest(
+                    FullWorkspace.Ktr,
+                    symbol,
+                    timeframe.Code(),
+                    analysisTime,
+                    workspaceCatalog.Get(FullWorkspace.Ktr).PromptVersion,
+                    context.StateHash,
+                    BuildSpecialistPayload(FullWorkspace.Ktr, context),
+                    context.Evidence[FullWorkspace.Ktr].Compressed.EvidenceIds),
+                cancellationToken);
+            runs.Add(tieBreaker);
+            if (tieBreaker.Status is FullWorkspaceExecutionStatus.Failed or FullWorkspaceExecutionStatus.Disabled)
+            {
+                return await WaitAsync(
+                    id,
+                    "The KTR tie-breaker was unavailable.",
+                    "Supporting specialists, Risk, and Master were skipped rather than forcing a direction.",
+                    runs,
+                    cancellationToken);
+            }
+            scoutDirection = FullGenerationGate.CandidateDirection(runs, settings.MinimumConfidence, 2);
+        }
+        if (scoutDirection is null)
+        {
+            return await WaitAsync(
+                id,
+                "The low-cost core scouts did not independently confirm one future direction.",
+                "Supporting specialists, Risk, and Master were skipped to protect the token budget.",
+                runs,
+                cancellationToken);
+        }
+
+        var supportingRuns = await Task.WhenAll(SupportingWorkspaces.Select(workspace =>
+            workspaceRunner.RunSpecialistAsync(
+                new FullAiRequest(
+                    workspace,
+                    symbol,
+                    timeframe.Code(),
+                    analysisTime,
+                    workspaceCatalog.Get(workspace).PromptVersion,
+                    context.StateHash,
+                    BuildSpecialistPayload(workspace, context),
+                    context.Evidence[workspace].Compressed.EvidenceIds),
+                cancellationToken)));
+        runs.AddRange(supportingRuns);
+        if (runs.Any(run => run.Status is FullWorkspaceExecutionStatus.Failed or FullWorkspaceExecutionStatus.Disabled))
+        {
+            return await WaitAsync(
+                id,
+                "One or more supporting Future AI specialists were unavailable.",
+                "Risk and Master were skipped rather than forcing a direction from an incomplete set.",
+                runs,
+                cancellationToken);
+        }
+        if (FullGenerationGate.CandidateDirection(runs, settings.MinimumConfidence, 3) is not { } confirmedDirection
+            || confirmedDirection != scoutDirection)
+        {
+            return await WaitAsync(
+                id,
+                "The broader specialist set did not preserve the core scouts' direction.",
+                "Risk and Master were skipped because confirmation was weak or conflicting.",
+                runs,
+                cancellationToken);
+        }
+        if (TokenCount(runs) >= settings.MaximumTotalTokens)
+        {
+            return await WaitAsync(
+                id,
+                "The Future Analyst token budget was exhausted before risk synthesis.",
+                "The bounded specialist set consumed the configured run budget.",
                 runs,
                 cancellationToken);
         }
@@ -160,6 +270,15 @@ internal sealed class FullAnalystService(
                 runs,
                 cancellationToken);
         }
+        if (TokenCount(runs) >= settings.MaximumTotalTokens)
+        {
+            return await WaitAsync(
+                id,
+                "The Future Analyst token budget was exhausted before master synthesis.",
+                "Risk analysis completed, but another provider call would exceed the configured run budget.",
+                runs,
+                cancellationToken);
+        }
 
         var masterRun = await workspaceRunner.RunMasterAsync(
             new FullAiRequest(
@@ -173,6 +292,7 @@ internal sealed class FullAnalystService(
                 context.Snapshot.EvidenceIds),
             cancellationToken);
         runs.Add(masterRun);
+        LogBudgetUsage(id, runs);
         var master = masterRun.MasterOutput;
         if (masterRun.Status is FullWorkspaceExecutionStatus.Failed or FullWorkspaceExecutionStatus.Disabled
             || master is null)
@@ -500,7 +620,7 @@ internal sealed class FullAnalystService(
         var package = context.Evidence[workspace];
         return JsonSerializer.Serialize(new
         {
-            snapshot = context.Snapshot,
+            snapshot = PromptSnapshot(context.Snapshot),
             evidencePackage = JsonSerializer.Deserialize<JsonElement>(package.Compressed.Json),
             workspaceScope = Scope(workspace)
         }, SerializerOptions);
@@ -509,7 +629,7 @@ internal sealed class FullAnalystService(
     private string BuildRiskPayload(FullAnalysisContext context, IReadOnlyList<FullWorkspaceRunResult> runs) =>
         JsonSerializer.Serialize(new
         {
-            snapshot = context.Snapshot,
+            snapshot = PromptSnapshot(context.Snapshot),
             policy = new
             {
                 settings.MinimumConfidence,
@@ -524,7 +644,7 @@ internal sealed class FullAnalystService(
     private string BuildMasterPayload(FullAnalysisContext context, IReadOnlyList<FullWorkspaceRunResult> runs) =>
         JsonSerializer.Serialize(new
         {
-            snapshot = context.Snapshot,
+            snapshot = PromptSnapshot(context.Snapshot),
             policy = new
             {
                 settings.MinimumConfidence,
@@ -548,6 +668,114 @@ internal sealed class FullAnalystService(
         run.Configuration.PromptVersion,
         run.Configuration.ConfigurationVersion
     };
+
+    private static object PromptSnapshot(FullAnalysisSnapshot snapshot) => new
+    {
+        snapshot.Symbol,
+        snapshot.CurrentPrice,
+        snapshot.AnalysisTimeUtc,
+        snapshot.RequestedTimeframe,
+        snapshot.CurrentCandleState,
+        snapshot.MarketState,
+        marketFrames = snapshot.MarketFrames.Select(frame => new
+        {
+            frame.Timeframe,
+            frame.LastCandleCloseTimeUtc,
+            frame.Open,
+            frame.High,
+            frame.Low,
+            frame.Close,
+            frame.TickVolume,
+            frame.Trend,
+            frame.Structure,
+            frame.Momentum,
+            frame.Volatility,
+            frame.Atr,
+            importantLevels = frame.ImportantLevels.Take(8),
+            candleSignals = frame.CandleSignals.Take(6),
+            conflicts = frame.Conflicts.Take(4)
+        }),
+        conflicts = snapshot.Conflicts.Take(8)
+    };
+
+    private static int TokenCount(IEnumerable<FullWorkspaceRunResult> runs) =>
+        runs.Sum(run => (run.InputTokens ?? 0) + (run.OutputTokens ?? 0));
+
+    private async Task<FullAnalysisResult?> TryReuseWaitAsync(
+        Guid analysisId,
+        FullAnalysisContext context,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var history = await store.QueryAsync(
+            new FullAnalysisQuery(
+                context.Snapshot.Symbol,
+                context.Snapshot.RequestedTimeframe,
+                FullAnalysisStatus.Wait,
+                1,
+                Math.Min(10, settings.MaximumPageSize)),
+            cancellationToken);
+        var cached = history.Items.FirstOrDefault(item =>
+            item.Id != analysisId
+            && string.Equals(item.SnapshotHash, context.StateHash, StringComparison.Ordinal)
+            && string.Equals(item.ConfigurationVersion, settings.ConfigurationVersion, StringComparison.Ordinal)
+            && item.WorkspaceResults.All(result => result.Status is not (FullWorkspaceExecutionStatus.Failed or FullWorkspaceExecutionStatus.Disabled))
+            && now - item.UpdatedAtUtc <= TimeSpan.FromMinutes(settings.CacheMinutes));
+        if (cached is null)
+        {
+            return null;
+        }
+
+        var cachedRuns = cached.WorkspaceResults.Select(run => run with
+        {
+            Id = Guid.NewGuid(),
+            Status = FullWorkspaceExecutionStatus.Cached,
+            CacheHit = true,
+            InputTokens = 0,
+            OutputTokens = 0,
+            LatencyMilliseconds = 0,
+            CreatedAtUtc = now,
+            CompletedAtUtc = now
+        }).ToArray();
+        logger.LogInformation(
+            "Future analysis {AnalysisId} reused SQL result {CachedAnalysisId} for unchanged state {StateHash}",
+            analysisId,
+            cached.Id,
+            context.StateHash);
+        return await store.CompleteAsync(
+            new FullAnalysisCompletionWriteModel(
+                analysisId,
+                FullDecision.Wait,
+                cached.Confidence ?? 0m,
+                cached.Agreement ?? 0m,
+                cached.Conflicts,
+                cached.KeyEvidenceIds,
+                cached.Reasoning,
+                cached.Invalidation ?? new FullInvalidation("No active direction to invalidate.", null, FullInvalidationCondition.None),
+                $"Reused the unchanged SQL snapshot without an AI call. {cached.Uncertainty}",
+                null,
+                cachedRuns,
+                cachedRuns.LastOrDefault(run => run.Workspace == FullWorkspace.Master)?.Id,
+                cached.Provider,
+                cached.Model,
+                cached.PromptVersion,
+                cached.ConfigurationVersion,
+                timeProvider.GetUtcNow().ToUniversalTime()),
+            cancellationToken);
+    }
+
+    private void LogBudgetUsage(Guid analysisId, IReadOnlyList<FullWorkspaceRunResult> runs)
+    {
+        var used = TokenCount(runs);
+        if (used > settings.MaximumTotalTokens)
+        {
+            logger.LogWarning(
+                "Future analysis {AnalysisId} used {UsedTokens} tokens, above the configured {TokenBudget} token budget.",
+                analysisId,
+                used,
+                settings.MaximumTotalTokens);
+        }
+    }
 
     private async Task<FullAnalysisResult> WaitAsync(
         Guid id,

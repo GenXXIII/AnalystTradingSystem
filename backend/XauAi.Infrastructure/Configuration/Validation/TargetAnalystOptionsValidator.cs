@@ -35,6 +35,11 @@ internal sealed class TargetAnalystOptionsValidator : IValidateOptions<TargetAna
             failures.Add("TargetAnalyst:MaximumCompressedCharacters must be between 2000 and 1000000.");
         }
 
+        if (options.MaximumTotalTokens is < 8_000 or > 1_000_000)
+        {
+            failures.Add("TargetAnalyst:MaximumTotalTokens must be between 8000 and 1000000.");
+        }
+
         if (options.MinimumMarketTimeframes is < 1 or > 7)
         {
             failures.Add("TargetAnalyst:MinimumMarketTimeframes must be between 1 and 7.");
@@ -60,6 +65,11 @@ internal sealed class TargetAnalystOptionsValidator : IValidateOptions<TargetAna
             || options.MaximumValidityMinutes > 10_080)
         {
             failures.Add("TargetAnalyst validity-minute limits are invalid.");
+        }
+
+        if (options.CacheMinutes is < 1 or > 1_440)
+        {
+            failures.Add("TargetAnalyst:CacheMinutes must be between 1 and 1440.");
         }
 
         if (options.MonitorIntervalSeconds is < 5 or > 3_600)
@@ -156,6 +166,14 @@ internal sealed class TargetAiWorkspacesOptionsValidator : IValidateOptions<Targ
         if (!ConfigurationValidation.IsConfigured(options.Model))
         {
             failures.Add($"{prefix}:Model is required when enabled.");
+        }
+        var models = options.FallbackModels.Split(
+            ',',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (models.Any(model => string.Equals(model, options.Model, StringComparison.OrdinalIgnoreCase))
+            || models.Distinct(StringComparer.OrdinalIgnoreCase).Count() != models.Length)
+        {
+            failures.Add($"{prefix}:FallbackModels must be unique and must not repeat Model.");
         }
 
         if (!ConfigurationValidation.IsAbsoluteHttpUrl(options.BaseUrl))

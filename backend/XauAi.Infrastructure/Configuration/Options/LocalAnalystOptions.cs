@@ -14,15 +14,15 @@ public sealed class LocalAnalystOptions
 
     public int HistoryLimit { get; set; } = 250;
 
-    public int MinimumCandles { get; set; } = 50;
+    public int MinimumCandles { get; set; } = 205;
 
     public int StaleAfterIntervals { get; set; } = 3;
 
     public int MaximumAllowedGaps { get; set; } = 30;
 
-    public decimal EntryScoreThreshold { get; set; } = 2m;
+    public decimal EntryScoreThreshold { get; set; } = 4m;
 
-    public decimal MinimumDirectionalLead { get; set; } = 1m;
+    public decimal MinimumDirectionalLead { get; set; } = 2m;
 
     public decimal StopOpposingScoreThreshold { get; set; } = 4m;
 
@@ -58,5 +58,5 @@ public sealed class LocalAnalystOptions
 
     public string ValidityCandles { get; set; } = "M1:15,M5:12,M15:8,M30:6,H1:5,H4:4,D1:3";
 
-    public string ConfigurationVersion { get; set; } = "phase12-v2";
+    public string ConfigurationVersion { get; set; } = "phase12-v3";
 }

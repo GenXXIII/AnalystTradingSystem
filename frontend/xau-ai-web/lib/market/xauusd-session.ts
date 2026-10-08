@@ -23,13 +23,6 @@ const tradingSessions: ReadonlyArray<{
   { name: "New York", timeZone: "America/New_York", opensAtHour: 8, closesAtHour: 17 },
 ];
 
-const transitionFormatter = new Intl.DateTimeFormat("en-GB", {
-  weekday: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-  timeZone: "UTC",
-});
 const localTransitionFormatter = new Intl.DateTimeFormat("en-GB", {
   weekday: "short",
   hour: "2-digit",
@@ -85,10 +78,10 @@ export function getXauUsdMarketSession(now: Date): XauUsdMarketSession {
   return {
     isOpen,
     nextTransitionAtUtc: transition,
-    nextTransitionLabel: `${action} ${transitionFormatter.format(transition)} UTC`,
+    nextTransitionLabel: `${action} ${localTransitionFormatter.format(transition)} UTC+7`,
     nextTransitionLocalLabel: `${action} ${localTransitionFormatter.format(transition)} UTC+7`,
     weeklyOpenLabel: `Open Mon ${summer ? "05:05" : "06:05"} UTC+7`,
-    weeklyCloseLabel: `Close Fri ${summer ? "20:58" : "21:58"} UTC`,
+    weeklyCloseLabel: `Close Sat ${summer ? "03:58" : "04:58"} UTC+7`,
     nextTradingSessionLabel: getNextTradingSessionLabel(now),
     season: summer ? "summer" : "winter",
   };

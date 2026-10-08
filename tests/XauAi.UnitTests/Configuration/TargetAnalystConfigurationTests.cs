@@ -15,6 +15,8 @@ public sealed class TargetAnalystConfigurationTests
             ["TARGET_STRUCTURE_AI_PROVIDER"] = "TargetProviderA",
             ["TARGET_STRUCTURE_AI_API_KEY"] = "target-structure-key",
             ["TARGET_STRUCTURE_AI_MODEL"] = "target-structure-model",
+            ["TARGET_STRUCTURE_AI_FALLBACK_MODELS"] = "fallback-a,fallback-b",
+            ["TARGET_STRUCTURE_AI_DISABLE_REASONING"] = "true",
             ["TARGET_MASTER_AI_PROVIDER"] = "TargetProviderB",
             ["TARGET_MASTER_AI_MODEL"] = "target-master-model",
             ["STRUCTURE_AI_PROVIDER"] = "InterpretationProvider"
@@ -26,6 +28,8 @@ public sealed class TargetAnalystConfigurationTests
         Assert.Equal("TargetProviderA", configuration["TargetAiWorkspaces:Structure:Provider"]);
         Assert.Equal("target-structure-key", configuration["TargetAiWorkspaces:Structure:ApiKey"]);
         Assert.Equal("target-structure-model", configuration["TargetAiWorkspaces:Structure:Model"]);
+        Assert.Equal("fallback-a,fallback-b", configuration["TargetAiWorkspaces:Structure:FallbackModels"]);
+        Assert.Equal("true", configuration["TargetAiWorkspaces:Structure:DisableReasoning"]);
         Assert.Equal("TargetProviderB", configuration["TargetAiWorkspaces:Master:Provider"]);
         Assert.Equal("InterpretationProvider", configuration["AiSpecialists:Structure:Provider"]);
     }
@@ -52,6 +56,17 @@ public sealed class TargetAnalystConfigurationTests
 
         Assert.Equal("shared-target-key", configuration["TargetAiWorkspaces:Structure:ApiKey"]);
         Assert.Equal("shared-target-key", configuration["TargetAiWorkspaces:Master:ApiKey"]);
+    }
+
+    [Fact]
+    public void Groq_key_is_a_shared_fallback_for_target_and_future_profiles()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddXauAiEnvironmentVariables(name => name == "GROQ_API_KEY" ? "shared-groq-key" : null)
+            .Build();
+
+        Assert.Equal("shared-groq-key", configuration["TargetAiWorkspaces:Structure:ApiKey"]);
+        Assert.Equal("shared-groq-key", configuration["FullAiWorkspaces:Master:ApiKey"]);
     }
 
     [Fact]

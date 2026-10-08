@@ -8,8 +8,9 @@ public sealed class FullAnalystOptions
     public string Symbol { get; set; } = "XAUUSD";
     public string Timeframes { get; set; } = "M1,M5,M15,M30,H1,H4,D1";
     public int EvidenceLookbackHours { get; set; } = 720;
-    public int MaximumEvidenceItemsPerWorkspace { get; set; } = 50;
-    public int MaximumCompressedCharacters { get; set; } = 32_000;
+    public int MaximumEvidenceItemsPerWorkspace { get; set; } = 8;
+    public int MaximumCompressedCharacters { get; set; } = 2_500;
+    public int MaximumTotalTokens { get; set; } = 15_000;
     public int MinimumMarketTimeframes { get; set; } = 3;
     public int StaleAfterIntervals { get; set; } = 3;
     public decimal MinimumConfidence { get; set; } = 0.65m;
@@ -43,10 +44,12 @@ public sealed class FullAiWorkspaceOptions
     public bool RequiresApiKey { get; set; } = true;
     public string ApiKey { get; set; } = string.Empty;
     public string Model { get; set; } = string.Empty;
+    public string FallbackModels { get; set; } = string.Empty;
     public string BaseUrl { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.1;
     public int TimeoutSeconds { get; set; } = 90;
-    public int MaxOutputTokens { get; set; } = 2_500;
+    public int MaxOutputTokens { get; set; } = 450;
+    public bool DisableReasoning { get; set; } = true;
     public int MaxRetries { get; set; } = 2;
     public int RequestsPerMinute { get; set; } = 10;
     public string PromptVersion { get; set; } = "phase14-v1";

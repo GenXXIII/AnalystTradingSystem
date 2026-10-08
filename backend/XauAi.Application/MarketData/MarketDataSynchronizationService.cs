@@ -296,8 +296,16 @@ internal sealed class MarketDataSynchronizationService(
             return recoveryFromUtc;
         }
 
-        return latest.IsComplete
-            ? latest.OpenTimeUtc.Add(request.Timeframe.Duration())
+        if (latest.IsComplete)
+        {
+            return latest.OpenTimeUtc.Add(request.Timeframe.Duration());
+        }
+
+        // Realtime candles are provisional until the official batch endpoint reconciles
+        // them. Resume after the latest completed candle so a newer forming candle cannot
+        // strand older provisional rows forever and make short timeframes appear stale.
+        return openTimes.Count > 0
+            ? openTimes[^1].Add(request.Timeframe.Duration())
             : latest.OpenTimeUtc;
     }
 

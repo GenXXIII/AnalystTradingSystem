@@ -37,10 +37,11 @@ internal sealed class LocalAnalystService(
         var checkpoint = await store.GetCheckpointAsync(settings.Symbol, timeframe, cancellationToken);
         if (checkpoint?.LastProcessedCandleTimeUtc == latest.OpenTimeUtc
             && checkpoint.Snapshot is not null
-            && string.Equals(
-                checkpoint.Snapshot.ConfigurationVersion,
-                settings.ConfigurationVersion,
-                StringComparison.Ordinal)
+            && (IsActive(checkpoint.Snapshot)
+                || string.Equals(
+                    checkpoint.Snapshot.ConfigurationVersion,
+                    settings.ConfigurationVersion,
+                    StringComparison.Ordinal))
             && !RequiresDataRetry(checkpoint.LastReason))
         {
             return checkpoint.Snapshot with { IsCached = true };
@@ -187,6 +188,10 @@ internal sealed class LocalAnalystService(
         or "INVALID_CANDLES"
         or "MARKET_DATA_GAPS";
 
+    private static bool IsActive(LocalSignalSnapshot snapshot) =>
+        string.Equals(snapshot.Status, "ACTIVE", StringComparison.Ordinal)
+        && snapshot.State is LocalSignalState.Buy or LocalSignalState.Sell;
+
     private LocalSignalPersistenceRequest BuildPersistenceRequest(
         LocalSignalDecision decision,
         LocalSignalSnapshot? active,
@@ -271,6 +276,12 @@ internal sealed class LocalAnalystService(
             {
                 return "OPPOSING_SELL_CONFLUENCE";
             }
+
+            var supporting = decision.Conditions.Where(condition => condition.LongMatched).Sum(condition => condition.Weight);
+            if (supporting < settings.EntryScoreThreshold)
+            {
+                return "BUY_CONFLUENCE_LOST";
+            }
         }
         else if (active.OriginDirection == LocalSignalState.Sell)
         {
@@ -288,6 +299,12 @@ internal sealed class LocalAnalystService(
             if (opposing >= settings.StopOpposingScoreThreshold)
             {
                 return "OPPOSING_BUY_CONFLUENCE";
+            }
+
+            var supporting = decision.Conditions.Where(condition => condition.ShortMatched).Sum(condition => condition.Weight);
+            if (supporting < settings.EntryScoreThreshold)
+            {
+                return "SELL_CONFLUENCE_LOST";
             }
         }
 

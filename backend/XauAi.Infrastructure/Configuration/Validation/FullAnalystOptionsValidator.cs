@@ -23,6 +23,7 @@ internal sealed class FullAnalystOptionsValidator : IValidateOptions<FullAnalyst
         if (options.EvidenceLookbackHours is < 1 or > 87_600
             || options.MaximumEvidenceItemsPerWorkspace is < 1 or > 500
             || options.MaximumCompressedCharacters is < 2_000 or > 1_000_000
+            || options.MaximumTotalTokens is < 8_000 or > 1_000_000
             || options.MinimumMarketTimeframes is < 1 or > 7
             || options.StaleAfterIntervals is < 1 or > 100)
         {
@@ -89,6 +90,14 @@ internal sealed class FullAiWorkspacesOptionsValidator : IValidateOptions<FullAi
                     || workspace.RequiresApiKey && !ConfigurationValidation.IsConfigured(workspace.ApiKey)))
             {
                 failures.Add($"FullAiWorkspaces:{pair.Key} enabled provider configuration is incomplete.");
+            }
+            var models = workspace.FallbackModels.Split(
+                ',',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (models.Any(model => string.Equals(model, workspace.Model, StringComparison.OrdinalIgnoreCase))
+                || models.Distinct(StringComparer.OrdinalIgnoreCase).Count() != models.Length)
+            {
+                failures.Add($"FullAiWorkspaces:{pair.Key} fallback models must be unique and must not repeat Model.");
             }
         }
 

@@ -2,6 +2,7 @@
 
 import { useMarketData } from "@/hooks/use-market-data";
 import type { MarketCandle } from "@/types/market";
+import { DISPLAY_TIME_ZONE, DISPLAY_TIME_ZONE_LABEL } from "@/lib/time/utc-plus-seven";
 
 const priceFormatter = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
@@ -12,14 +13,13 @@ const integerFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });
 
-const utcFormatter = new Intl.DateTimeFormat("en-GB", {
+const displayFormatter = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
   month: "short",
   hour: "2-digit",
   minute: "2-digit",
   hour12: false,
-  timeZone: "UTC",
-  timeZoneName: "short",
+  timeZone: DISPLAY_TIME_ZONE,
 });
 
 export function MarketWorkspace() {
@@ -108,7 +108,7 @@ export function MarketWorkspace() {
             <p className="card-kicker">Recent evidence</p>
             <h3>Hourly price candles</h3>
           </div>
-          <span>H1 · UTC · latest 24 hours</span>
+          <span>H1 · UTC+7 · latest 24 hours</span>
         </div>
         <div className="table-scroll">
           <table>
@@ -161,5 +161,5 @@ function CandleRow({ candle }: Readonly<{ candle: MarketCandle }>) {
 }
 
 function formatUtc(value: string): string {
-  return utcFormatter.format(new Date(value));
+  return `${displayFormatter.format(new Date(value))} ${DISPLAY_TIME_ZONE_LABEL}`;
 }

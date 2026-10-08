@@ -145,6 +145,14 @@ Copy-Item .env.example .env
 docker compose up -d --build
 ```
 
+If an existing SQL Server volume was created with a different `.env` password,
+reset both persisted logins without deleting data, then start normally:
+
+```powershell
+.\scripts\reset-database-passwords.ps1
+.\scripts\start-local.ps1
+```
+
 AllTick needs no desktop terminal, Python bridge, or Windows host. The API keeps
 one WebSocket connection with the required heartbeat, builds live provisional
 candles, and reconciles them with provider candles before they become eligible

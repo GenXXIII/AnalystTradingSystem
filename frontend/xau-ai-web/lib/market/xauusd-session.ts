@@ -3,6 +3,9 @@ export type XauUsdMarketSession = {
   nextTransitionAtUtc: Date;
   nextTransitionLabel: string;
   nextTransitionLocalLabel: string;
+  weeklyOpenLabel: string;
+  weeklyCloseLabel: string;
+  nextTradingSessionLabel: string;
   season: "summer" | "winter";
 };
 
@@ -34,6 +37,16 @@ const localTransitionFormatter = new Intl.DateTimeFormat("en-GB", {
   hour12: false,
   timeZone: "Asia/Bangkok",
 });
+const nextSessionFormatter = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+  timeZone: "Asia/Bangkok",
+});
+
+let nextSessionCacheMinute = -1;
+let nextSessionCacheValue = "Next session checking";
 
 export function getXauUsdMarketSession(now: Date): XauUsdMarketSession {
   const summer = isUsDaylightSavingSeason(now);
@@ -74,6 +87,9 @@ export function getXauUsdMarketSession(now: Date): XauUsdMarketSession {
     nextTransitionAtUtc: transition,
     nextTransitionLabel: `${action} ${transitionFormatter.format(transition)} UTC`,
     nextTransitionLocalLabel: `${action} ${localTransitionFormatter.format(transition)} UTC+7`,
+    weeklyOpenLabel: `Open Mon ${summer ? "05:05" : "06:05"} UTC+7`,
+    weeklyCloseLabel: `Close Fri ${summer ? "20:58" : "21:58"} UTC`,
+    nextTradingSessionLabel: getNextTradingSessionLabel(now),
     season: summer ? "summer" : "winter",
   };
 }
@@ -92,6 +108,35 @@ export function getActiveTradingSessions(now: Date): TradingSessionName[] {
   return tradingSessions
     .filter((session) => isSessionOpen(now, session.timeZone, session.opensAtHour, session.closesAtHour))
     .map((session) => session.name);
+}
+
+export function getNextTradingSessionLabel(now: Date): string {
+  const minute = Math.floor(now.getTime() / 60_000);
+  if (minute === nextSessionCacheMinute) return nextSessionCacheValue;
+
+  const firstCandidate = new Date(now);
+  firstCandidate.setUTCMinutes(0, 0, 0);
+  firstCandidate.setUTCHours(firstCandidate.getUTCHours() + 1);
+
+  for (let hourOffset = 0; hourOffset <= 8 * 24; hourOffset += 1) {
+    const candidate = new Date(firstCandidate.getTime() + hourOffset * 3_600_000);
+    const previousHour = new Date(candidate.getTime() - 3_600_000);
+    const opening = tradingSessions
+      .filter((session) => (
+        isSessionOpen(candidate, session.timeZone, session.opensAtHour, session.closesAtHour)
+        && !isSessionOpen(previousHour, session.timeZone, session.opensAtHour, session.closesAtHour)
+      ))
+      .map((session) => session.name);
+    if (opening.length > 0) {
+      nextSessionCacheMinute = minute;
+      nextSessionCacheValue = `Next ${opening.join(" / ")} ${nextSessionFormatter.format(candidate)} UTC+7`;
+      return nextSessionCacheValue;
+    }
+  }
+
+  nextSessionCacheMinute = minute;
+  nextSessionCacheValue = "Next session unavailable";
+  return nextSessionCacheValue;
 }
 
 function atUtcTime(reference: Date, dayOffset: number, minutes: number) {

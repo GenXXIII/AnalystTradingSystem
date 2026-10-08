@@ -97,7 +97,6 @@ internal sealed class EfTargetAnalysisStore(XauAiDbContext context) : ITargetAna
         TargetAnalysisCompletionWriteModel completion,
         CancellationToken cancellationToken = default)
     {
-        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         var entity = await RequireAnalyzingAsync(completion.AnalysisId, cancellationToken);
         AddWorkspaceResults(completion.AnalysisId, completion.WorkspaceResults);
         var masterRun = completion.WorkspaceResults.Single(run => run.Workspace == TargetWorkspace.Master);
@@ -133,7 +132,6 @@ internal sealed class EfTargetAnalysisStore(XauAiDbContext context) : ITargetAna
             completion.Master.TargetPrice,
             completion.CompletedAtUtc.AddTicks(1)));
         await context.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
         return await MapAsync(entity, cancellationToken);
     }
 
@@ -141,7 +139,6 @@ internal sealed class EfTargetAnalysisStore(XauAiDbContext context) : ITargetAna
         TargetNoValidTargetWriteModel completion,
         CancellationToken cancellationToken = default)
     {
-        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         var entity = await RequireAnalyzingAsync(completion.AnalysisId, cancellationToken);
         AddWorkspaceResults(completion.AnalysisId, completion.WorkspaceResults);
         entity.TargetPrice = null;
@@ -170,7 +167,6 @@ internal sealed class EfTargetAnalysisStore(XauAiDbContext context) : ITargetAna
             entity.CurrentPrice,
             completion.CompletedAtUtc));
         await context.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
         return await MapAsync(entity, cancellationToken);
     }
 
@@ -249,33 +245,37 @@ internal sealed class EfTargetAnalysisStore(XauAiDbContext context) : ITargetAna
         TargetLifecycleTransition transition,
         CancellationToken cancellationToken = default)
     {
-        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-        var expected = transition.ExpectedStatus.ToString();
-        var next = transition.NewStatus.ToString();
-        var affected = await context.TargetAnalyses
-            .Where(item => item.Id == transition.AnalysisId && item.Status == expected)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(item => item.Status, next)
-                .SetProperty(item => item.UpdatedAtUtc, transition.OccurredAtUtc)
-                .SetProperty(item => item.EndedAtUtc, transition.OccurredAtUtc),
-                cancellationToken);
-        if (affected == 0)
+        var strategy = context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
         {
-            await transaction.RollbackAsync(cancellationToken);
-            return false;
-        }
+            await using var transactionScope = await context.Database.BeginTransactionAsync(cancellationToken);
+            var expected = transition.ExpectedStatus.ToString();
+            var next = transition.NewStatus.ToString();
+            var affected = await context.TargetAnalyses
+                .Where(item => item.Id == transition.AnalysisId && item.Status == expected)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.Status, next)
+                    .SetProperty(item => item.UpdatedAtUtc, transition.OccurredAtUtc)
+                    .SetProperty(item => item.EndedAtUtc, transition.OccurredAtUtc),
+                    cancellationToken);
+            if (affected == 0)
+            {
+                await transactionScope.RollbackAsync(cancellationToken);
+                return false;
+            }
 
-        context.TargetAnalysisLifecycleEvents.Add(Event(
-            transition.AnalysisId,
-            transition.EventType,
-            transition.ExpectedStatus,
-            transition.NewStatus,
-            transition.Reason,
-            transition.Price,
-            transition.OccurredAtUtc));
-        await context.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return true;
+            context.TargetAnalysisLifecycleEvents.Add(Event(
+                transition.AnalysisId,
+                transition.EventType,
+                transition.ExpectedStatus,
+                transition.NewStatus,
+                transition.Reason,
+                transition.Price,
+                transition.OccurredAtUtc));
+            await context.SaveChangesAsync(cancellationToken);
+            await transactionScope.CommitAsync(cancellationToken);
+            return true;
+        });
     }
 
     private async Task<DomainTargetAnalysis> RequireAnalyzingAsync(
@@ -315,7 +315,7 @@ internal sealed class EfTargetAnalysisStore(XauAiDbContext context) : ITargetAna
                 RiskAcceptable = run.Workspace == TargetWorkspace.Risk ? specialist?.RiskAcceptable : null,
                 Summary = specialist?.Summary ?? master?.ReasoningSummary ?? string.Empty,
                 Uncertainty = specialist?.Uncertainty ?? master?.Uncertainty ?? string.Empty,
-                OutputJson = string.IsNullOrWhiteSpace(run.OutputJson) ? "{}" : run.OutputJson,
+                OutputJson = NormalizeJson(run.OutputJson),
                 EvidenceIdsJson = JsonSerializer.Serialize(evidenceIds, SerializerOptions),
                 Provider = run.Configuration.Provider,
                 Model = run.Configuration.Model,
@@ -462,6 +462,24 @@ internal sealed class EfTargetAnalysisStore(XauAiDbContext context) : ITargetAna
         catch (JsonException)
         {
             return [];
+        }
+    }
+
+    private static string NormalizeJson(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "{}";
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(value);
+            return value;
+        }
+        catch (JsonException)
+        {
+            return JsonSerializer.Serialize(new { rawResponse = value }, SerializerOptions);
         }
     }
 

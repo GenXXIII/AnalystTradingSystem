@@ -38,6 +38,7 @@ internal sealed class MarketDataOptionsValidator : IValidateOptions<MarketDataOp
         }
 
         Range(options.InitialHistoryDays, 1, 3660, "MarketData:InitialHistoryDays", failures);
+        Range(options.HistoryTargetCandles, 50, 10000, "MarketData:HistoryTargetCandles", failures);
         Range(options.SyncIntervalSeconds, 10, 86400, "MarketData:SyncIntervalSeconds", failures);
         Range(options.BatchSize, 2, 10000, "MarketData:BatchSize", failures);
         Range(options.MaxApiLimit, 1, 10000, "MarketData:MaxApiLimit", failures);

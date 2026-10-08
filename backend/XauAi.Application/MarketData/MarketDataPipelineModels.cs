@@ -14,6 +14,8 @@ public sealed class MarketDataPipelineSettings
 
     public int InitialHistoryDays { get; init; } = 7;
 
+    public int HistoryTargetCandles { get; init; } = 250;
+
     public int SyncIntervalSeconds { get; init; } = 60;
 
     public int BatchSize { get; init; } = 1000;
@@ -42,7 +44,8 @@ public sealed record MarketDataSynchronizationRequest(
     MarketTimeframe Timeframe,
     DateTimeOffset? FromUtc,
     DateTimeOffset ToUtc,
-    bool IncludeFormingCandle = false);
+    bool IncludeFormingCandle = false,
+    bool EnsureHistoryTarget = false);
 
 public sealed record MarketDataPipelineResult(
     Guid RunId,

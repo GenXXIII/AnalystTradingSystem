@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using XauAi.Application.AI;
 using XauAi.Application.Evidence;
+using XauAi.Application.LocalAnalysis;
 using XauAi.Application.MarketData;
 using XauAi.Application.TechnicalAnalysis;
 
@@ -17,6 +18,7 @@ internal sealed class TargetAnalystService(
     IAiEvidenceCompressor evidenceCompressor,
     IMarketDataQueryStore marketData,
     ITechnicalAnalysisService technicalAnalysis,
+    ILocalAnalystService localAnalyst,
     ITargetWorkspaceRunner workspaceRunner,
     ITargetResultValidator resultValidator,
     TargetWorkspaceCatalog workspaceCatalog,
@@ -56,6 +58,13 @@ internal sealed class TargetAnalystService(
             || !settings.Timeframes.Contains(timeframe))
         {
             throw Invalid("The target-analysis timeframe is not enabled.");
+        }
+
+        if ((await store.GetActiveAsync(symbol, cancellationToken)).Count > 0)
+        {
+            throw new TargetAnalysisException(
+                TargetAnalysisErrorCodes.InvalidState,
+                "Cancel or wait for the active target to finish before generating another target.");
         }
 
         var analysisTime = (request.AnalysisTimeUtc ?? now).ToUniversalTime();
@@ -378,6 +387,18 @@ internal sealed class TargetAnalystService(
                 "The current-price candle was stale at the target-analysis time.");
         }
 
+        LocalSignalSnapshot? localSignal = null;
+        try
+        {
+            localSignal = await localAnalyst.GetCurrentAsync(symbol, requestedTimeframe, cancellationToken);
+        }
+        catch (LocalAnalystException exception)
+        {
+            logger.LogWarning(
+                "Target analysis could not load the independent Local Analyst context: {ErrorCode}",
+                exception.Code);
+        }
+
         var analyses = multi.Analyses
             .Where(pair => settings.Timeframes.Contains(pair.Key))
             .OrderByDescending(pair => TimeframeRank(pair.Key))
@@ -520,6 +541,7 @@ internal sealed class TargetAnalystService(
             {
                 ["evidence"] = evidenceVersion,
                 ["technicalAnalysis"] = "phase6-v1",
+                ["localAnalyst"] = localSignal?.ConfigurationVersion ?? "unavailable",
                 ["marketSnapshot"] = Hash(string.Join('|', frames.Select(frame => $"{frame.Timeframe}:{frame.LastCandleCloseTimeUtc:O}:{frame.Close}")))
             },
             [.. selectedEvidence.Keys.Order()],
@@ -531,7 +553,8 @@ internal sealed class TargetAnalystService(
                 workspace => workspace,
                 workspace => workspaceCatalog.Get(workspace).PromptVersion),
             frames,
-            [.. multi.Conflicts.Concat(selections.Values.SelectMany(package => package.Selection.Conflicts.Select(conflict => conflict.Reason))).Distinct()]);
+            [.. multi.Conflicts.Concat(selections.Values.SelectMany(package => package.Selection.Conflicts.Select(conflict => conflict.Reason))).Distinct()],
+            localSignal);
 
         return new TargetAnalysisContext(
             snapshot,

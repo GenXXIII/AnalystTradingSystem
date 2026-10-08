@@ -58,6 +58,13 @@ internal sealed class FullAnalystService(
             throw Invalid("The Full Analyst timeframe is not enabled.");
         }
 
+        if ((await store.GetActiveAsync(symbol, cancellationToken)).Count > 0)
+        {
+            throw new FullAnalysisException(
+                FullAnalysisErrorCodes.InvalidState,
+                "Cancel or wait for the active Future Analyst result to finish before generating another outlook.");
+        }
+
         var analysisTime = (request.AnalysisTimeUtc ?? now).ToUniversalTime();
         if (analysisTime > now)
         {

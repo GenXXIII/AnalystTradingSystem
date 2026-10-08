@@ -6,10 +6,10 @@ import {
   getTechnicalAnalysis,
 } from "@/features/analysis/api/get-technical-analysis";
 import {
-  getCurrentLocalSignal,
+  getLocalAnalystStatus,
   getLocalSignalChartMarkers,
+  type LocalAnalystStatus,
   type LocalSignalChartMarker,
-  type LocalSignalSnapshot,
 } from "@/features/analysis/api/get-local-analyst";
 import {
   getLatestStoredCandles,
@@ -34,7 +34,7 @@ type TerminalLoadState = "loading" | "ready" | "unavailable";
 const LIVE_SNAPSHOT_CANDLE_LIMIT = 3;
 
 export function useMarketTerminal() {
-  const [timeframe, setTimeframe] = useState<MarketTimeframeCode>("M15");
+  const [timeframe, setTimeframeState] = useState<MarketTimeframeCode>("M15");
   const [state, setState] = useState<TerminalLoadState>("loading");
   const [provider, setProvider] = useState<MarketProviderStatus | null>(null);
   const [quote, setQuote] = useState<MarketQuote | null>(null);
@@ -44,7 +44,7 @@ export function useMarketTerminal() {
   const [lastSync, setLastSync] = useState<MarketDataPipelineResult | null>(null);
   const [analysis, setAnalysis] = useState<TechnicalAnalysis | null>(null);
   const [multiTimeframe, setMultiTimeframe] = useState<MultiTimeframeAnalysis | null>(null);
-  const [localSignal, setLocalSignal] = useState<LocalSignalSnapshot | null>(null);
+  const [localStatus, setLocalStatus] = useState<LocalAnalystStatus | null>(null);
   const [signalMarkers, setSignalMarkers] = useState<LocalSignalChartMarker[]>([]);
   const [localSignalError, setLocalSignalError] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -60,7 +60,6 @@ export function useMarketTerminal() {
     if (showLoading) {
       setState("loading");
       setSourceComparison(null);
-      setLocalSignal(null);
       setSignalMarkers([]);
       setLocalSignalError(null);
     }
@@ -73,7 +72,7 @@ export function useMarketTerminal() {
       comparisonResult,
       analysisResult,
       multiTimeframeResult,
-      signalResult,
+      localStatusResult,
       markerResult,
     ] = await Promise.allSettled([
       getMarketProviderStatus(),
@@ -83,7 +82,7 @@ export function useMarketTerminal() {
       getMarketSourceComparison(selectedTimeframe),
       getTechnicalAnalysis(selectedTimeframe),
       getMultiTimeframeAnalysis(),
-      getCurrentLocalSignal(selectedTimeframe),
+      getLocalAnalystStatus(),
       getLocalSignalChartMarkers(selectedTimeframe),
     ]);
 
@@ -101,11 +100,11 @@ export function useMarketTerminal() {
     if (comparisonResult.status === "fulfilled") setSourceComparison(comparisonResult.value);
     if (analysisResult.status === "fulfilled") setAnalysis(analysisResult.value);
     if (multiTimeframeResult.status === "fulfilled") setMultiTimeframe(multiTimeframeResult.value);
-    if (signalResult.status === "fulfilled") {
-      setLocalSignal(signalResult.value);
+    if (localStatusResult.status === "fulfilled") {
+      setLocalStatus(localStatusResult.value);
       setLocalSignalError(null);
     } else {
-      setLocalSignalError(toLocalAnalystError(signalResult.reason));
+      setLocalSignalError(toLocalAnalystError(localStatusResult.reason));
     }
     if (markerResult.status === "fulfilled") setSignalMarkers(markerResult.value);
 
@@ -120,6 +119,22 @@ export function useMarketTerminal() {
     const uniqueFailures = [...new Set(failures)];
     setError(uniqueFailures.length > 0 ? uniqueFailures.join(" ") : null);
     setState(candlesResult.status === "fulfilled" || quoteResult.status === "fulfilled" ? "ready" : "unavailable");
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const saved = window.localStorage.getItem("xauai.market-timeframe");
+      if (saved && isMarketTimeframe(saved)) {
+        setTimeframeState(saved);
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const setTimeframe = useCallback((value: MarketTimeframeCode) => {
+    window.localStorage.setItem("xauai.market-timeframe", value);
+    setTimeframeState(value);
   }, []);
 
   const loadLiveSnapshot = useCallback(async (selectedTimeframe: MarketTimeframeCode) => {
@@ -214,7 +229,7 @@ export function useMarketTerminal() {
     lastSync,
     analysis,
     multiTimeframe,
-    localSignal,
+    localStatus,
     signalMarkers,
     localSignalError,
     analysisError,
@@ -223,6 +238,10 @@ export function useMarketTerminal() {
     refresh,
     sync,
   };
+}
+
+function isMarketTimeframe(value: string): value is MarketTimeframeCode {
+  return ["M1", "M5", "M15", "M30", "H1", "H4", "D1"].includes(value);
 }
 
 function toLocalAnalystError(reason: unknown): string {

@@ -114,6 +114,7 @@ public static class DependencyInjection
                 .Select(timeframe => timeframe!.Value)
                 .Distinct()],
             InitialHistoryDays = marketDataOptions.InitialHistoryDays,
+            HistoryTargetCandles = marketDataOptions.HistoryTargetCandles,
             SyncIntervalSeconds = marketDataOptions.SyncIntervalSeconds,
             BatchSize = marketDataOptions.BatchSize,
             MaxApiLimit = marketDataOptions.MaxApiLimit,

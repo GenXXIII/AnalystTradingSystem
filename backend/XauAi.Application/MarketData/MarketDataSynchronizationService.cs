@@ -240,14 +240,35 @@ internal sealed class MarketDataSynchronizationService(
             return request.Timeframe.AlignDown(requestedToUtc.AddDays(-settings.InitialHistoryDays));
         }
 
-        var historyFromUtc = request.Timeframe.AlignDown(
-            requestedToUtc.AddDays(-settings.InitialHistoryDays));
+        var historyDays = request.EnsureHistoryTarget
+            ? Math.Min(
+                settings.MaxQueryRangeDays,
+                Math.Max(
+                    settings.InitialHistoryDays,
+                    (int)Math.Ceiling(
+                        request.Timeframe.Duration().TotalDays
+                        * settings.HistoryTargetCandles
+                        * 1.5d)))
+            : settings.InitialHistoryDays;
+        var historyFromUtc = request.Timeframe.AlignDown(requestedToUtc.AddDays(-historyDays));
         var openTimes = await queryStore.GetOpenTimesAsync(
             request.Symbol,
             request.Timeframe,
             historyFromUtc,
             requestedToUtc,
             cancellationToken);
+        if (request.EnsureHistoryTarget && openTimes.Count < settings.HistoryTargetCandles)
+        {
+            logger.LogInformation(
+                "Market-data synchronization has {StoredCount}/{TargetCount} history candles for {Symbol} {Timeframe}; backfilling from {HistoryFromUtc}",
+                openTimes.Count,
+                settings.HistoryTargetCandles,
+                request.Symbol,
+                request.Timeframe.Code(),
+                historyFromUtc);
+            return historyFromUtc;
+        }
+
         var earliestGap = MarketDataGapDetector.Detect(
                 request.Symbol,
                 request.Timeframe,

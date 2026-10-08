@@ -60,6 +60,7 @@ public static class XauAiEnvironmentVariables
             ["MARKET_DATA_SYMBOL"] = "MarketData:Symbol",
             ["MARKET_DATA_TIMEFRAMES"] = "MarketData:Timeframes",
             ["MARKET_DATA_INITIAL_HISTORY_DAYS"] = "MarketData:InitialHistoryDays",
+            ["MARKET_DATA_HISTORY_TARGET_CANDLES"] = "MarketData:HistoryTargetCandles",
             ["MARKET_DATA_SYNC_INTERVAL_SECONDS"] = "MarketData:SyncIntervalSeconds",
             ["MARKET_DATA_BATCH_SIZE"] = "MarketData:BatchSize",
             ["MARKET_DATA_MAX_API_LIMIT"] = "MarketData:MaxApiLimit",
@@ -284,6 +285,14 @@ public static class XauAiEnvironmentVariables
         AddFullWorkspace(values, readVariable, "FULL_NEWS", "News");
         AddFullWorkspace(values, readVariable, "FULL_RISK", "Risk");
         AddFullWorkspace(values, readVariable, "FULL_MASTER", "Master");
+        AddFullApiKey(values, readVariable, "FULL_STRUCTURE", "Structure");
+        AddFullApiKey(values, readVariable, "FULL_LIQUIDITY", "Liquidity");
+        AddFullApiKey(values, readVariable, "FULL_CANDLE", "Candle");
+        AddFullApiKey(values, readVariable, "FULL_FLOW", "Flow");
+        AddFullApiKey(values, readVariable, "FULL_KTR", "Ktr");
+        AddFullApiKey(values, readVariable, "FULL_NEWS", "News");
+        AddFullApiKey(values, readVariable, "FULL_RISK", "Risk");
+        AddFullApiKey(values, readVariable, "FULL_MASTER", "Master");
 
         AddFirstPresent(values, "AI:ApiKey", readVariable, "AI_API_KEY", "OPENAI_API_KEY");
         AddFirstPresent(values, "AI:Model", readVariable, "AI_MODEL", "OPENAI_MODEL");
@@ -428,6 +437,18 @@ public static class XauAiEnvironmentVariables
                 readVariable($"{environmentPrefix}_AI_{field.Key}"));
         }
     }
+
+    private static void AddFullApiKey(
+        Dictionary<string, string?> values,
+        Func<string, string?> readVariable,
+        string environmentPrefix,
+        string configurationName) =>
+        AddFirstPresent(
+            values,
+            $"FullAiWorkspaces:{configurationName}:ApiKey",
+            readVariable,
+            $"{environmentPrefix}_AI_API_KEY",
+            "FULL_AI_API_KEY");
 
     private static void AddIfPresent(
         Dictionary<string, string?> values,

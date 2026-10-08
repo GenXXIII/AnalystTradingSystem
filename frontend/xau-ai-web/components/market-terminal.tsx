@@ -4,17 +4,27 @@ import { useEffect, useState, type ReactNode } from "react";
 import { marketTimeframes, type MarketTimeframeCode } from "@/features/market/api/get-pipeline-data";
 import { useMarketTerminal } from "@/hooks/use-market-terminal";
 import { useNewsModule } from "@/hooks/use-news-module";
+import { useEconomicModule } from "@/hooks/use-economic-module";
+import { useAnalystHealth, type AnalystHealthSnapshot } from "@/hooks/use-analyst-health";
 import { TradingChart } from "@/components/trading-chart";
 import { FullAnalystWorkspace } from "@/components/full-analyst-workspace";
-import type { LocalSignalSnapshot, LocalSignalState } from "@/features/analysis/api/get-local-analyst";
+import { TargetAnalystWorkspace } from "@/components/target-analyst-workspace";
+import type { FullAnalysisResult } from "@/features/full-analysis/api/full-analyst";
+import type { TargetAnalysisResult } from "@/features/target-analysis/api/target-analyst";
+import type { LocalAnalystStatus } from "@/features/analysis/api/get-local-analyst";
+import type {
+  EconomicObservation,
+  EconomicSeries,
+  EconomicSystemStatus,
+} from "@/features/economic/api/get-economic-data";
 import { getActiveTradingSessions, getXauUsdMarketSession } from "@/lib/market/xauusd-session";
 import type { MultiTimeframeAnalysis, TechnicalAnalysis } from "@/types/analysis";
-import type { StoredMarketCandle } from "@/types/market";
+import type { MarketDataPipelineStatus, MarketDataSourceComparison, MarketProviderStatus } from "@/types/market";
 import type { NewsSystemStatus, PagedNewsArticles } from "@/types/news";
 
 const price = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const integer = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
-const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+const economicNumber = new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 });
 const utcDate = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC",
 });
@@ -24,14 +34,16 @@ const utcTime = new Intl.DateTimeFormat("en-GB", {
 const utcPlusSevenTime = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "Asia/Bangkok",
 });
+const dateOnly = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit", month: "short", year: "numeric", timeZone: "UTC",
+});
 const timeframeLabels: Record<MarketTimeframeCode, string> = {
   M1: "M1", M5: "M5", M15: "M15", M30: "M30", H1: "1H", H4: "4H", D1: "1D",
 };
 const moduleLaunchers = [
-  { key: "full", eyebrow: "AI workspace", title: "Full Analyst" },
   { key: "analysis", eyebrow: "Analysis", title: "Application-owned engine" },
   { key: "news", eyebrow: "Intelligence", title: "News" },
-  { key: "candles", eyebrow: "Market data", title: "Candle feed" },
+  { key: "economy", eyebrow: "Macro", title: "Economic schedule" },
   { key: "quality", eyebrow: "Operations", title: "Provider & storage" },
 ] as const;
 type ModuleKey = (typeof moduleLaunchers)[number]["key"];
@@ -39,9 +51,12 @@ type ModuleKey = (typeof moduleLaunchers)[number]["key"];
 export function MarketTerminal() {
   const terminal = useMarketTerminal();
   const [now, setNow] = useState<Date | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
   const [activeModule, setActiveModule] = useState<ModuleKey | null>(null);
-  const news = useNewsModule(activeModule === "news");
+  const [targetChartResult, setTargetChartResult] = useState<TargetAnalysisResult | null>(null);
+  const [fullChartResult, setFullChartResult] = useState<FullAnalysisResult | null>(null);
+  const news = useNewsModule(activeModule === "news" || activeModule === "quality");
+  const economy = useEconomicModule(activeModule === "economy" || activeModule === "quality");
+  const analystHealth = useAnalystHealth(activeModule === "quality");
 
   useEffect(() => {
     const initialTimer = window.setTimeout(() => setNow(new Date()), 0);
@@ -60,30 +75,20 @@ export function MarketTerminal() {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [activeModule]);
 
-  const selectedCandle = terminal.candles.find((item) => item.openTimeUtc === selected)
-    ?? terminal.candles[0]
-    ?? null;
-  const availability = terminal.pipeline?.availability;
-  const synchronization = terminal.pipeline?.synchronization;
-  const spread = terminal.quote ? terminal.quote.ask - terminal.quote.bid : null;
   const completedVisible = terminal.candles.filter((item) => item.isComplete).length;
-  const providerName = terminal.provider?.provider ?? "AllTick";
   const twelveDataReady = terminal.sourceComparison?.referenceEnabled === true
     && terminal.sourceComparison.matchedCandles > 0;
   const systemState = terminal.provider?.connected ? "Operational" : terminal.state === "loading" ? "Checking" : "Attention";
   const marketSession = now ? getXauUsdMarketSession(now) : null;
   const activeTradingSessions = now ? getActiveTradingSessions(now) : [];
   const changeTimeframe = (timeframe: MarketTimeframeCode) => {
-    setSelected(null);
     terminal.setTimeframe(timeframe);
   };
   const activeModuleDefinition = moduleLaunchers.find((item) => item.key === activeModule) ?? null;
   const activeModuleMessage = activeModule === "news"
     ? news.error ?? news.status?.provider.message ?? "Latest normalized news from SQL storage."
-    : activeModule === "full"
-      ? "Independent evidence synthesis · BUY, SELL, or WAIT · analysis only."
-    : activeModule === "candles"
-      ? `${terminal.timeframe} · ${integer.format(terminal.candles.length)} candles loaded from SQL storage.`
+    : activeModule === "economy"
+      ? economy.error ?? economy.status?.provider.message ?? "Latest normalized economic observations from SQL storage."
       : terminal.error ?? terminal.analysisError ?? "Module data is live and read only.";
 
   return (
@@ -107,7 +112,7 @@ export function MarketTerminal() {
           <section className="center-stack">
             <article className="terminal-panel chart-panel">
               <PanelHeader eyebrow="Price evidence" title="Market chart">
-                <span className={`state-chip ${marketSession === null ? "neutral" : marketSession.isOpen ? "complete" : "negative"}`}>{marketSession === null ? "Market checking" : `Market ${marketSession.isOpen ? "open" : "closed"} · ${marketSession.nextTransitionLocalLabel}`}</span>
+                <span className={`state-chip ${marketSession === null ? "neutral" : marketSession.isOpen ? "complete" : "negative"}`}>{marketSession === null ? "Checking" : marketSession.isOpen ? "Market open" : "Market closed"}</span>
               </PanelHeader>
               <div className="chart-toolbar">
                 <div className="chart-timeframes" aria-label="Chart timeframe">
@@ -119,8 +124,8 @@ export function MarketTerminal() {
                 </div>
                 <span className="chart-context">XAUUSD</span>
                 <span className="chart-context">UTC</span>
-                <span className={`chart-provider ${terminal.provider?.connected ? "connected" : "waiting"}`}><StatusDot online={Boolean(terminal.provider?.connected)} />{providerName} {terminal.provider?.connected ? "connected" : "waiting"}</span>
-                <span className={`chart-provider ${twelveDataReady ? "connected" : "waiting"}`}><StatusDot online={twelveDataReady} />Twelve Data {twelveDataReady ? "ready" : "waiting"}</span>
+                <span className={`chart-provider ${terminal.provider?.connected ? "connected" : "waiting"}`} title={terminal.provider?.connected ? "Connected" : "Waiting for provider data"}><StatusDot online={Boolean(terminal.provider?.connected)} />AllTick</span>
+                <span className={`chart-provider ${twelveDataReady ? "connected" : "waiting"}`} title={twelveDataReady ? "Reference data ready" : "Waiting for reference data"}><StatusDot online={twelveDataReady} />Twelve Data</span>
                 <span className="chart-session">{activeTradingSessions.length > 0 ? activeTradingSessions.join(" · ") : "Between sessions"}</span>
                 <span className="chart-source">SQL history · live forming candle</span>
               </div>
@@ -132,16 +137,19 @@ export function MarketTerminal() {
                 nowUtcMilliseconds={now?.getTime() ?? null}
                 marketSession={marketSession}
                 signalMarkers={terminal.signalMarkers}
+                targetAnalysis={targetChartResult}
+                fullAnalysis={fullChartResult}
               />
             </article>
           </section>
 
           <aside className="right-stack">
-            <LocalSignalPanel
-              signal={terminal.localSignal?.timeframe === terminal.timeframe ? terminal.localSignal : null}
+            <AnalystRail
               timeframe={terminal.timeframe}
-              loading={terminal.state === "loading"}
-              error={terminal.localSignalError}
+              localStatus={terminal.localStatus}
+              targetResult={targetChartResult}
+              onTargetResultChange={setTargetChartResult}
+              onFullResultChange={setFullChartResult}
             />
           </aside>
         </div>
@@ -149,7 +157,7 @@ export function MarketTerminal() {
         <footer className="status-bar">
           <span><StatusDot online={Boolean(terminal.provider?.connected)} />System {systemState}</span>
           <span>SQL Server · source of truth</span><span>AllTick live · Twelve Data reference</span>
-          <span className="status-right">Phase 14 · Full Analyst workspace</span>
+          <span className="status-right">Target / Future AI workspaces</span>
         </footer>
       </section>
 
@@ -161,45 +169,41 @@ export function MarketTerminal() {
               <button type="button" onClick={() => setActiveModule(null)} autoFocus aria-label={`Close ${activeModuleDefinition.title}`}>×</button>
             </header>
             <div className={`control-modal-body module-modal-body module-${activeModule}`}>
-              {activeModule === "full" ? <FullAnalystWorkspace timeframe={terminal.timeframe} /> : null}
               {activeModule === "analysis" ? (
                 <TechnicalAnalysisPanel
                   analysis={terminal.analysis?.timeframe === terminal.timeframe ? terminal.analysis : null}
                   multiTimeframe={terminal.multiTimeframe}
+                  localStatus={terminal.localStatus}
                   error={terminal.analysisError}
                   loading={terminal.state === "loading"}
                 />
               ) : null}
               {activeModule === "news" ? <NewsModule articles={news.articles} status={news.status} loading={news.loading} error={news.error} onRefresh={news.refresh} /> : null}
-              {activeModule === "candles" ? (
-                <CandleFeedModule
-                  candles={terminal.candles}
-                  selectedCandle={selectedCandle}
-                  loading={terminal.state === "loading"}
-                  onSelect={setSelected}
-                />
-              ) : null}
+              {activeModule === "economy" ? <EconomicScheduleModule {...economy} /> : null}
               {activeModule === "quality" ? (
-                <section className="module-quality-content">
-                  <div className="module-summary-grid">
-                    <AnalysisTile label="Bid" value={formatPrice(terminal.quote?.bid)} tone="positive" detail="AllTick live" />
-                    <AnalysisTile label="Ask" value={formatPrice(terminal.quote?.ask)} detail="AllTick live" />
-                    <AnalysisTile label="Spread" value={spread === null ? "—" : price.format(spread)} detail="Ask minus bid" />
-                    <AnalysisTile label={`${terminal.timeframe} stored`} value={integer.format(availability?.storedCandles ?? 0)} detail="SQL candles" />
-                  </div>
-                  <div className="connection-row">
-                    <StatusDot online={Boolean(terminal.provider?.connected)} />
-                    <div><strong>{terminal.provider?.connected ? `${providerName} connected` : `${providerName} waiting`}</strong><small>{terminal.provider?.message ?? "Checking provider connection…"}</small></div>
-                  </div>
-                  <dl className="terminal-details module-quality-details">
-                    <Detail label="Internal symbol" value={terminal.provider?.applicationSymbol ?? "XAUUSD"} />
-                    <Detail label="Provider symbol" value={terminal.provider?.providerSymbol ?? "—"} />
-                    <Detail label="Pipeline status" value={synchronization?.status ?? "Not started"} tone={statusTone(synchronization?.status)} />
-                    <Detail label="Visible completed" value={integer.format(completedVisible)} />
-                    <Detail label="Visible forming" value={integer.format(terminal.candles.length - completedVisible)} />
-                    <Detail label="Gap candidates" value={integer.format(synchronization?.detectedGapCount ?? 0)} tone={synchronization?.detectedGapCount ? "warning" : undefined} />
-                  </dl>
-                </section>
+                <ProviderStorageModule
+                  timeframe={terminal.timeframe}
+                  provider={terminal.provider}
+                  pipeline={terminal.pipeline}
+                  comparison={terminal.sourceComparison}
+                  localStatus={terminal.localStatus}
+                  localError={terminal.localSignalError}
+                  newsStatus={news.status}
+                  newsError={news.error}
+                  economicStatus={economy.status}
+                  economicError={economy.error}
+                  analysts={analystHealth.snapshot}
+                  analystError={analystHealth.error}
+                  visibleCandles={terminal.candles.length}
+                  completedVisible={completedVisible}
+                  onRefresh={() => {
+                    terminal.refresh();
+                    news.refresh();
+                    economy.refresh();
+                    analystHealth.refresh();
+                  }}
+                  loading={news.loading || economy.loading || analystHealth.loading}
+                />
               ) : null}
             </div>
             <footer className="control-modal-footer">
@@ -213,94 +217,90 @@ export function MarketTerminal() {
   );
 }
 
-function LocalSignalPanel({ signal, timeframe, loading, error }: Readonly<{
-  signal: LocalSignalSnapshot | null;
+function AnalystRail({ timeframe, localStatus, targetResult, onTargetResultChange, onFullResultChange }: Readonly<{
   timeframe: MarketTimeframeCode;
-  loading: boolean;
-  error: string | null;
+  localStatus: LocalAnalystStatus | null;
+  targetResult: TargetAnalysisResult | null;
+  onTargetResultChange: (result: TargetAnalysisResult | null) => void;
+  onFullResultChange: (result: FullAnalysisResult | null) => void;
 }>) {
-  if (!signal) {
-    return (
-      <article className="terminal-panel local-signal-panel">
-        <PanelHeader eyebrow={`Local analyst · XAUUSD · ${timeframe}`} title="Current signal">
-          <span className="state-chip forming">{loading ? "Evaluating" : "Unavailable"}</span>
-        </PanelHeader>
-        <div className="analysis-empty">
-          <strong>{loading ? "Evaluating the latest closed candle…" : "Local signal is not ready"}</strong>
-          <span>{error ?? "Waiting for the deterministic local analyst."}</span>
-        </div>
-      </article>
-    );
-  }
+  const [activeWorkspace, setActiveWorkspace] = useState<"target" | "full">("target");
 
-  const tone = localSignalTone(signal.state);
-  const reason = formatSignalReason(signal.reason);
   return (
-    <article className="terminal-panel local-signal-panel">
-      <PanelHeader eyebrow={`Local analyst · ${signal.symbol} · ${signal.timeframe}`} title="Current signal">
-        <span className={`state-chip ${tone.chip}`}>{signal.state}</span>
-      </PanelHeader>
-
-      <div className="local-signal-hero" data-state={signal.state.toLowerCase()}>
-        <span className="local-signal-symbol" aria-hidden="true">{localSignalSymbol(signal.state)}</span>
-        <div>
-          <strong>{localSignalHeadline(signal)}</strong>
-          <small>{signal.state === "Nothing" ? reason : `${formatSignalScore(signal.score)} / ${formatSignalScore(signal.maxScore)} score · ${formatConfidence(signal.confidence)}`}</small>
-        </div>
+    <section className="terminal-panel analyst-rail">
+      <header className="analyst-switcher" role="tablist" aria-label="AI analyst workspace">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeWorkspace === "target"}
+          onClick={() => setActiveWorkspace("target")}
+        >
+          <span>Phase 13</span>
+          <strong>Target Analyst</strong>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeWorkspace === "full"}
+          onClick={() => setActiveWorkspace("full")}
+        >
+          <span>Phase 14</span>
+          <strong>Future Analyst</strong>
+        </button>
+      </header>
+      <div className="analyst-rail-body" role="tabpanel">
+        {activeWorkspace === "target"
+          ? <TargetAnalystWorkspace timeframe={timeframe} localStatus={localStatus} onResultChange={onTargetResultChange} />
+          : <FullAnalystWorkspace timeframe={timeframe} targetPlan={targetResult} onResultChange={onFullResultChange} />}
       </div>
-
-      <dl className="terminal-details local-signal-details">
-        <Detail label="Score" value={`${formatSignalScore(signal.score)} / ${formatSignalScore(signal.maxScore)}`} tone={tone.text} />
-        <Detail label="Confidence" value={formatConfidence(signal.confidence)} tone={tone.text} />
-        <Detail label={signal.state === "Nothing" ? "Reference price" : "Signal price"} value={formatPrice(signal.signalPrice)} />
-        <Detail label="Invalidation" value={formatPrice(signal.invalidationPrice)} />
-        <Detail label="Target" value={formatPrice(signal.targetPrice)} />
-        <Detail label="Valid until" value={formatDate(signal.validUntilUtc)} />
-        <Detail label="Signal candle" value={formatDate(signal.signalCandleTimeUtc)} />
-      </dl>
-
-      <section className="local-signal-evidence">
-        <div className="analysis-section-title"><span>Setup evidence</span><small>{signal.configurationVersion}</small></div>
-        <dl className="analysis-evidence-list">
-          <Detail label="Structure" value={formatEvidence(signal.structureState)} />
-          <Detail label="Liquidity" value={formatEvidence(signal.liquidityState)} />
-          <Detail label="Candle" value={formatEvidence(signal.candleState)} />
-          <Detail label="Momentum" value={formatEvidence(signal.momentumState)} />
-          <Detail label="KTR" value={formatEvidence(signal.ktrState)} />
-          <Detail label="Volatility" value={formatEvidence(signal.volatilityState)} />
-        </dl>
-      </section>
-
-      <p className="local-signal-note">
-        {signal.reason ? `${signal.state === "Stop" ? "Stopped" : "Decision"}: ${reason}. ` : ""}
-        Analysis only · no automatic trade execution.
-      </p>
-      <footer className="analysis-footer">Evaluated {formatDate(signal.evaluatedAtUtc)}</footer>
-    </article>
+    </section>
   );
 }
 
-function CandleFeedModule({ candles, selectedCandle, loading, onSelect }: Readonly<{
-  candles: StoredMarketCandle[];
-  selectedCandle: StoredMarketCandle | null;
+function EconomicScheduleModule({ series, observations, status, loading, error, refresh }: Readonly<{
+  series: EconomicSeries[];
+  observations: EconomicObservation[];
+  status: EconomicSystemStatus | null;
   loading: boolean;
-  onSelect: (value: string) => void;
+  error: string | null;
+  refresh: () => void;
 }>) {
+  const seriesById = new Map(series.map((item) => [item.id, item]));
+  const rows = [...observations].sort((left, right) => right.observationDate.localeCompare(left.observationDate));
+  const healthy = status?.provider.state === "Available" && status.series.every((item) => item.consecutiveFailures === 0);
   return (
-    <article className="terminal-panel feed-panel">
-      <PanelHeader eyebrow="Stored evidence" title="Candle feed">
-        <span className="panel-note">{integer.format(candles.length)} records</span>
+    <article className="terminal-panel feed-panel economy-schedule">
+      <PanelHeader eyebrow="FRED · normalized SQL storage" title="Economic schedule">
+        <span className={`state-chip ${healthy ? "complete" : loading ? "forming" : "negative"}`}>
+          {loading ? "Loading" : healthy ? "Healthy" : "Attention"}
+        </span>
       </PanelHeader>
+      <div className="news-module-summary">
+        <div><span>Provider</span><strong>{status?.provider.provider ?? "FRED"}</strong></div>
+        <div><span>Stored series</span><strong>{integer.format(status?.storedSeries ?? series.length)}</strong></div>
+        <div><span>Observations</span><strong>{integer.format(status?.storedObservations ?? 0)}</strong></div>
+        <button className="secondary-action" type="button" onClick={refresh} disabled={loading}>{loading ? "Refreshing…" : "Refresh schedule"}</button>
+      </div>
+      {error ? <p className="terminal-error" role="alert">{error}</p> : null}
+      <p className="module-disclaimer">Next period is estimated from the stored series cadence; it is not an official release timestamp.</p>
       <div className="terminal-table-scroll">
         <table className="terminal-table">
-          <thead><tr><th>Open time</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Ticks</th><th>State</th></tr></thead>
+          <thead><tr><th>Indicator</th><th>Frequency</th><th>Latest period</th><th>Value</th><th>Next expected period</th><th>Storage</th></tr></thead>
           <tbody>
-            {candles.map((candle) => (
-              <CandleRow candle={candle} selected={candle.openTimeUtc === selectedCandle?.openTimeUtc} onSelect={onSelect} key={candle.openTimeUtc} />
-            ))}
-            {candles.length === 0 ? (
-              <tr><td className="terminal-empty" colSpan={7}>{loading ? "Loading stored candles…" : "No stored candles for this timeframe."}</td></tr>
-            ) : null}
+            {rows.map((observation) => {
+              const definition = seriesById.get(observation.economicSeriesId);
+              return (
+                <tr key={observation.id}>
+                  <td><strong>{observation.seriesName}</strong><small>{observation.externalSeriesId}</small></td>
+                  <td>{definition?.frequency ?? "—"}</td>
+                  <td>{formatDateOnly(observation.observationDate)}</td>
+                  <td>{formatEconomicValue(observation, definition)}</td>
+                  <td>{expectedEconomicPeriod(observation.observationDate, definition?.frequency)}</td>
+                  <td><span className={`state-chip ${observation.status === "Valid" ? "complete" : "neutral"}`}>{observation.status}</span></td>
+                </tr>
+              );
+            })}
+            {!loading && rows.length === 0 ? <tr><td className="terminal-empty" colSpan={6}>No stored economic observations are available.</td></tr> : null}
           </tbody>
         </table>
       </div>
@@ -308,9 +308,156 @@ function CandleFeedModule({ candles, selectedCandle, loading, onSelect }: Readon
   );
 }
 
-function TechnicalAnalysisPanel({ analysis, multiTimeframe, error, loading }: Readonly<{
+function ProviderStorageModule({
+  timeframe,
+  provider,
+  pipeline,
+  comparison,
+  localStatus,
+  localError,
+  newsStatus,
+  newsError,
+  economicStatus,
+  economicError,
+  analysts,
+  analystError,
+  visibleCandles,
+  completedVisible,
+  onRefresh,
+  loading,
+}: Readonly<{
+  timeframe: MarketTimeframeCode;
+  provider: MarketProviderStatus | null;
+  pipeline: MarketDataPipelineStatus | null;
+  comparison: MarketDataSourceComparison | null;
+  localStatus: LocalAnalystStatus | null;
+  localError: string | null;
+  newsStatus: NewsSystemStatus | null;
+  newsError: string | null;
+  economicStatus: EconomicSystemStatus | null;
+  economicError: string | null;
+  analysts: AnalystHealthSnapshot | null;
+  analystError: string | null;
+  visibleCandles: number;
+  completedVisible: number;
+  onRefresh: () => void;
+  loading: boolean;
+}>) {
+  const synchronization = pipeline?.synchronization;
+  const targetReady = analysts?.targetConfiguration.filter((item) => item.enabled && item.hasApiKey).length ?? 0;
+  const futureReady = analysts?.futureConfiguration.filter((item) => item.enabled && item.hasApiKey).length ?? 0;
+  const targetFailures = analysts?.latestTarget?.specialistResults.filter((item) => item.status === "Failed") ?? [];
+  const futureFailures = analysts?.latestFuture?.workspaceResults.filter((item) => item.status === "Failed") ?? [];
+  const localIssues = localStatus?.timeframes
+    .filter((item) => isLocalReadinessFailure(item.lastReason))
+    .map((item) => `${item.timeframe}: ${formatEvidence(item.lastReason ?? "not evaluated")}`) ?? [];
+  const rows: HealthRowData[] = [
+    {
+      name: "AllTick",
+      role: "Live market provider",
+      healthy: provider?.connected === true,
+      storage: `${integer.format(pipeline?.availability.storedCandles ?? visibleCandles)} ${timeframe} candles in SQL`,
+      message: provider?.message ?? "Provider status has not loaded.",
+    },
+    {
+      name: "Twelve Data",
+      role: "Historical reference provider",
+      healthy: comparison?.referenceEnabled === true && comparison.matchedCandles > 0,
+      storage: `${integer.format(comparison?.matchedCandles ?? 0)} compared reference candles`,
+      message: comparison?.referenceEnabled
+        ? comparison.matchedCandles > 0 ? "Reference candles are stored and comparable." : "Enabled, but no matching stored reference candles were found."
+        : "Reference provider is disabled or unavailable.",
+    },
+    {
+      name: "SQL candle pipeline",
+      role: "Primary market storage",
+      healthy: isHealthyStatus(synchronization?.status) && (synchronization?.consecutiveFailures ?? 0) === 0,
+      storage: `${integer.format(completedVisible)} complete + ${integer.format(Math.max(0, visibleCandles - completedVisible))} forming visible`,
+      message: synchronization?.lastErrorMessage
+        ?? `${synchronization?.status ?? "Not started"}; ${integer.format(synchronization?.detectedGapCount ?? 0)} reported gap candidates.`,
+    },
+    {
+      name: "Local Analyst",
+      role: "Possible BUY / SELL / STOP",
+      healthy: localStatus?.enabled === true && localStatus.timeframes.length > 0 && localIssues.length === 0,
+      storage: `${integer.format(localStatus?.timeframes.length ?? 0)} timeframe checkpoints in SQL`,
+      message: localError ?? (localIssues.length > 0 ? localIssues.join(" · ") : "All configured timeframe evaluators are reporting."),
+    },
+    {
+      name: "Target AI",
+      role: "Best forward position",
+      healthy: targetReady === 8 && targetFailures.length === 0,
+      storage: `${integer.format(analysts?.targetStoredResults ?? 0)} analysis snapshots in SQL`,
+      message: analystError
+        ?? (targetFailures.length > 0
+          ? `Latest run failed: ${targetFailures.map((item) => `${item.workspace}: ${item.errorCode ?? item.errorMessage ?? "provider unavailable"}`).join(" · ")}`
+          : `${targetReady}/8 independent AI workspaces configured; latest persisted run has no provider failure.`),
+    },
+    {
+      name: "Future AI",
+      role: "BUY / SELL / WAIT outlook",
+      healthy: futureReady === 8 && futureFailures.length === 0,
+      storage: `${integer.format(analysts?.futureStoredResults ?? 0)} analysis snapshots in SQL`,
+      message: analystError
+        ?? (futureFailures.length > 0
+          ? `Latest run failed: ${futureFailures.map((item) => `${item.workspace}: ${item.errorMessage ?? "provider unavailable"}`).join(" · ")}`
+          : `${futureReady}/8 independent AI workspaces configured; latest persisted run has no provider failure.`),
+    },
+    {
+      name: newsStatus?.provider.provider ?? "NewsData",
+      role: "News provider and collector",
+      healthy: newsStatus?.provider.state === "Available" && newsStatus.collection?.status === "Healthy",
+      storage: `${integer.format(newsStatus?.storedArticles ?? 0)} articles in SQL`,
+      message: newsError ?? newsStatus?.collection?.lastErrorMessage ?? newsStatus?.provider.message ?? "News status has not loaded.",
+    },
+    {
+      name: economicStatus?.provider.provider ?? "FRED",
+      role: "Economic provider and schedule store",
+      healthy: economicStatus?.provider.state === "Available"
+        && economicStatus.series.every((item) => item.consecutiveFailures === 0),
+      storage: `${integer.format(economicStatus?.storedObservations ?? 0)} observations across ${integer.format(economicStatus?.storedSeries ?? 0)} series`,
+      message: economicError
+        ?? economicStatus?.series.find((item) => item.lastErrorMessage)?.lastErrorMessage
+        ?? economicStatus?.provider.message
+        ?? "Economic status has not loaded.",
+    },
+  ];
+
+  return (
+    <section className="module-quality-content provider-health-module">
+      <header className="provider-health-header">
+        <div><span>Provider, engine, and durable-storage status</span><strong>Healthy only when the real dependency is usable</strong></div>
+        <button className="secondary-action" type="button" onClick={onRefresh} disabled={loading}>{loading ? "Checking…" : "Check all"}</button>
+      </header>
+      <div className="provider-health-grid">
+        {rows.map((row) => <ProviderHealthRow row={row} key={row.name} />)}
+      </div>
+    </section>
+  );
+}
+
+interface HealthRowData {
+  name: string;
+  role: string;
+  healthy: boolean;
+  storage: string;
+  message: string;
+}
+
+function ProviderHealthRow({ row }: Readonly<{ row: HealthRowData }>) {
+  return (
+    <article className="provider-health-row" data-state={row.healthy ? "healthy" : "attention"}>
+      <StatusDot online={row.healthy} />
+      <div><strong>{row.name}</strong><span>{row.role}</span><small>{row.message}</small></div>
+      <div><span>{row.healthy ? "Healthy" : "Attention"}</span><small>{row.storage}</small></div>
+    </article>
+  );
+}
+
+function TechnicalAnalysisPanel({ analysis, multiTimeframe, localStatus, error, loading }: Readonly<{
   analysis: TechnicalAnalysis | null;
   multiTimeframe: MultiTimeframeAnalysis | null;
+  localStatus: LocalAnalystStatus | null;
   error: string | null;
   loading: boolean;
 }>) {
@@ -344,6 +491,25 @@ function TechnicalAnalysisPanel({ analysis, multiTimeframe, error, loading }: Re
         <AnalysisTile label={`RSI ${analysis.momentum.rsi.period}`} value={formatNumber(analysis.momentum.rsi.value, 1)} tone={directionTone(analysis.momentum.rsi.momentum)} detail={analysis.momentum.rsi.zone} />
         <AnalysisTile label="Volatility" value={formatEvidence(analysis.volatility.regime)} detail={`ATR ${formatNumber(analysis.volatility.atr.value, 2)}`} />
       </div>
+
+      <section className="analysis-section">
+        <div className="analysis-section-title"><span>Local possible signals · all timeframes</span><small>{localStatus?.configurationVersion ?? "checking"}</small></div>
+        <div className="local-timeframe-signals">
+          {localStatus?.timeframes.map((item) => {
+            const snapshot = item.snapshot;
+            const state = snapshot?.state ?? "Nothing";
+            return (
+              <div data-state={state.toLowerCase()} key={item.timeframe}>
+                <strong>{item.timeframe}</strong>
+                <span>{state.toUpperCase()}</span>
+                <small>{state === "Nothing"
+                  ? formatEvidence(item.lastReason ?? "Not evaluated")
+                  : `TP ${formatPrice(snapshot?.targetPrice)} · SL ${formatPrice(snapshot?.invalidationPrice)}`}</small>
+              </div>
+            );
+          }) ?? <span className="analysis-muted">Local Analyst status is loading.</span>}
+        </div>
+      </section>
 
       <section className="analysis-section">
         <div className="analysis-section-title"><span>Indicator evidence</span><small>{analysis.diagnostics.candlesUsed} closed candles</small></div>
@@ -421,10 +587,6 @@ function NewsModule({ articles, status, loading, error, onRefresh }: Readonly<{
   );
 }
 
-function CandleRow({ candle, selected, onSelect }: Readonly<{ candle: StoredMarketCandle; selected: boolean; onSelect: (value: string) => void }>) {
-  return <tr data-selected={selected || undefined}><td><button className="row-select" type="button" onClick={() => onSelect(candle.openTimeUtc)}>{formatDate(candle.openTimeUtc)}</button></td><td>{formatPrice(candle.open)}</td><td>{formatPrice(candle.high)}</td><td>{formatPrice(candle.low)}</td><td className={candle.close >= candle.open ? "positive-text" : "negative-text"}>{formatPrice(candle.close)}</td><td>{candle.tickVolume === null ? "—" : compact.format(candle.tickVolume)}</td><td><span className={`state-chip ${candle.isComplete ? "complete" : "forming"}`}>{candle.isComplete ? "Closed" : "Forming"}</span></td></tr>;
-}
-
 function PanelHeader({ eyebrow, title, children }: Readonly<{ eyebrow: string; title: string; children?: ReactNode }>) {
   return <header className="panel-header"><div><span>{eyebrow}</span><h2>{title}</h2></div>{children ? <div className="panel-header-actions">{children}</div> : null}</header>;
 }
@@ -434,42 +596,43 @@ function StatusDot({ online }: Readonly<{ online: boolean }>) { return <i classN
 function formatPrice(value: number | null | undefined) { return value === null || value === undefined ? "—" : price.format(value); }
 function formatNumber(value: number | null | undefined, digits: number) { return value === null || value === undefined ? "—" : value.toFixed(digits); }
 function formatDate(value: string | null) { return value ? `${utcDate.format(new Date(value))} UTC` : "—"; }
+function formatDateOnly(value: string) { return dateOnly.format(new Date(`${value}T00:00:00Z`)); }
+function formatEconomicValue(observation: EconomicObservation, series: EconomicSeries | undefined) {
+  const value = observation.value === null ? observation.originalValue : economicNumber.format(observation.value);
+  return series?.units ? `${value} ${series.units}` : value;
+}
+function expectedEconomicPeriod(value: string, frequency: string | undefined) {
+  const next = new Date(`${value}T00:00:00Z`);
+  const normalized = frequency?.toLowerCase() ?? "";
+  if (normalized.includes("daily")) next.setUTCDate(next.getUTCDate() + 1);
+  else if (normalized.includes("weekly")) next.setUTCDate(next.getUTCDate() + 7);
+  else if (normalized.includes("quarter")) next.setUTCMonth(next.getUTCMonth() + 3);
+  else if (normalized.includes("annual") || normalized.includes("year")) next.setUTCFullYear(next.getUTCFullYear() + 1);
+  else if (normalized.includes("month")) next.setUTCMonth(next.getUTCMonth() + 1);
+  else return "Cadence unavailable";
+  return dateOnly.format(next);
+}
 function formatEvidence(value: string) { return value.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replaceAll(":", ": "); }
-function formatSignalReason(value: string | null) {
-  if (!value) return "No active invalidation reason";
-  const text = value.toLowerCase().replaceAll("_", " ");
-  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+function isLocalReadinessFailure(reason: string | null) {
+  return reason !== null && [
+    "NO_COMPLETED_CANDLES",
+    "INSUFFICIENT_HISTORY",
+    "DUPLICATE_CANDLES",
+    "INVALID_OR_INCOMPLETE_CANDLE",
+    "MIXED_MARKET_DATA",
+    "STALE_MARKET_DATA",
+    "NO_ANALYZABLE_CANDLES",
+    "INVALID_CANDLES",
+    "MARKET_DATA_GAPS",
+  ].includes(reason);
 }
-function formatSignalScore(value: number) { return Number.isInteger(value) ? String(value) : value.toFixed(1); }
-function formatConfidence(value: number) { return `${Math.round(value * 100)}%`; }
-function localSignalTone(state: LocalSignalState) {
-  if (state === "Buy") return { chip: "complete", text: "positive" };
-  if (state === "Sell") return { chip: "negative", text: "negative" };
-  if (state === "Stop") return { chip: "forming", text: "warning" };
-  return { chip: "neutral", text: "neutral" };
-}
-function localSignalSymbol(state: LocalSignalState) {
-  if (state === "Buy") return "↑";
-  if (state === "Sell") return "↓";
-  if (state === "Stop") return "●";
-  return "—";
-}
-function localSignalHeadline(signal: LocalSignalSnapshot) {
-  if (signal.state === "Buy") return "Bullish setup active";
-  if (signal.state === "Sell") return "Bearish setup active";
-  if (signal.state === "Stop") return `${signal.originDirection ?? "Local"} setup stopped`;
-  return "No active setup";
+function isHealthyStatus(status: string | undefined) {
+  const value = status?.toLowerCase() ?? "";
+  return value.includes("success") || value.includes("healthy") || value.includes("complete");
 }
 function directionTone(direction: string) {
   if (direction === "Bullish") return "positive";
   if (direction === "Bearish") return "negative";
   if (direction === "Conflicting") return "warning";
-  return "neutral";
-}
-function statusTone(status: string | undefined) {
-  const value = status?.toLowerCase() ?? "";
-  if (value.includes("success") || value.includes("healthy") || value.includes("complete")) return "complete";
-  if (value.includes("running")) return "forming";
-  if (value.includes("fail") || value.includes("interrupt")) return "negative";
   return "neutral";
 }

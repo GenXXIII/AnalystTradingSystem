@@ -80,7 +80,6 @@ internal sealed class EfFullAnalysisStore(XauAiDbContext context) : IFullAnalysi
         FullAnalysisCompletionWriteModel completion,
         CancellationToken cancellationToken = default)
     {
-        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         var entity = await RequireAnalyzingAsync(completion.AnalysisId, cancellationToken);
         var active = completion.Decision != FullDecision.Wait;
         entity.Decision = completion.Decision.ToString();
@@ -114,7 +113,6 @@ internal sealed class EfFullAnalysisStore(XauAiDbContext context) : IFullAnalysi
             entity.CurrentPrice,
             completion.CompletedAtUtc));
         await context.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
         return Map(entity);
     }
 
@@ -191,34 +189,38 @@ internal sealed class EfFullAnalysisStore(XauAiDbContext context) : IFullAnalysi
         FullLifecycleTransition transition,
         CancellationToken cancellationToken = default)
     {
-        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-        var expected = transition.ExpectedStatus.ToString();
-        var next = transition.NewStatus.ToString();
-        var affected = await context.FullAnalyses
-            .Where(item => item.Id == transition.AnalysisId && item.Status == expected)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(item => item.Status, next)
-                .SetProperty(item => item.FutureAvailable, false)
-                .SetProperty(item => item.UpdatedAtUtc, transition.OccurredAtUtc)
-                .SetProperty(item => item.EndedAtUtc, transition.OccurredAtUtc),
-                cancellationToken);
-        if (affected == 0)
+        var strategy = context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
         {
-            await transaction.RollbackAsync(cancellationToken);
-            return false;
-        }
+            await using var transactionScope = await context.Database.BeginTransactionAsync(cancellationToken);
+            var expected = transition.ExpectedStatus.ToString();
+            var next = transition.NewStatus.ToString();
+            var affected = await context.FullAnalyses
+                .Where(item => item.Id == transition.AnalysisId && item.Status == expected)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.Status, next)
+                    .SetProperty(item => item.FutureAvailable, false)
+                    .SetProperty(item => item.UpdatedAtUtc, transition.OccurredAtUtc)
+                    .SetProperty(item => item.EndedAtUtc, transition.OccurredAtUtc),
+                    cancellationToken);
+            if (affected == 0)
+            {
+                await transactionScope.RollbackAsync(cancellationToken);
+                return false;
+            }
 
-        context.FullAnalysisLifecycleEvents.Add(Event(
-            transition.AnalysisId,
-            transition.EventType,
-            transition.ExpectedStatus,
-            transition.NewStatus,
-            transition.Reason,
-            transition.Price,
-            transition.OccurredAtUtc));
-        await context.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return true;
+            context.FullAnalysisLifecycleEvents.Add(Event(
+                transition.AnalysisId,
+                transition.EventType,
+                transition.ExpectedStatus,
+                transition.NewStatus,
+                transition.Reason,
+                transition.Price,
+                transition.OccurredAtUtc));
+            await context.SaveChangesAsync(cancellationToken);
+            await transactionScope.CommitAsync(cancellationToken);
+            return true;
+        });
     }
 
     private async Task<DomainFullAnalysis> RequireAnalyzingAsync(Guid id, CancellationToken cancellationToken)

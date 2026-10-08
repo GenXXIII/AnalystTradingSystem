@@ -2,6 +2,8 @@
 
 Target Analyst is opt-in. SQL persistence, normalized evidence, market data, and technical analysis must be ready before enabling it. Copy the Phase 13 variables from `.env.example` into the ignored `.env` file.
 
+The generated immutable context also captures the current independent Local Analyst snapshot when one is available. The web result persists from SQL across navigation/reload, blocks replacement while active, and exposes explicit cancellation without deleting history.
+
 ## Provider-neutral configuration
 
 Each workspace can use a different vendor or model:
@@ -83,3 +85,5 @@ Content-Type: application/json
 ```
 
 The request never places a trade. Use the returned job ID to inspect its result and lifecycle or cancel an active target.
+
+The terminal presents Target Analyst beside Full Analyst in a switchable right-side rail. Cancelling removes the active target card while preserving its history and evidence.

@@ -35,7 +35,13 @@ internal sealed class LocalAnalystService(
         var candles = source.OrderBy(candle => candle.OpenTimeUtc).ToArray();
         var latest = candles[^1];
         var checkpoint = await store.GetCheckpointAsync(settings.Symbol, timeframe, cancellationToken);
-        if (checkpoint?.LastProcessedCandleTimeUtc == latest.OpenTimeUtc && checkpoint.Snapshot is not null)
+        if (checkpoint?.LastProcessedCandleTimeUtc == latest.OpenTimeUtc
+            && checkpoint.Snapshot is not null
+            && string.Equals(
+                checkpoint.Snapshot.ConfigurationVersion,
+                settings.ConfigurationVersion,
+                StringComparison.Ordinal)
+            && !RequiresDataRetry(checkpoint.LastReason))
         {
             return checkpoint.Snapshot with { IsCached = true };
         }
@@ -169,6 +175,17 @@ internal sealed class LocalAnalystService(
             settings.EvaluationIntervalSeconds,
             checkpoints);
     }
+
+    private static bool RequiresDataRetry(string? reason) => reason is
+        "NO_COMPLETED_CANDLES"
+        or "INSUFFICIENT_HISTORY"
+        or "DUPLICATE_CANDLES"
+        or "INVALID_OR_INCOMPLETE_CANDLE"
+        or "MIXED_MARKET_DATA"
+        or "STALE_MARKET_DATA"
+        or "NO_ANALYZABLE_CANDLES"
+        or "INVALID_CANDLES"
+        or "MARKET_DATA_GAPS";
 
     private LocalSignalPersistenceRequest BuildPersistenceRequest(
         LocalSignalDecision decision,

@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using XauAi.Application.AI;
+using XauAi.Application.LocalAnalysis;
 using XauAi.Application.MarketData;
 
 namespace XauAi.Application.TargetAnalysis;
@@ -81,7 +82,8 @@ public sealed record TargetAnalysisSnapshot(
     IReadOnlyDictionary<TargetWorkspace, string> AiConfigurationVersions,
     IReadOnlyDictionary<TargetWorkspace, string> PromptVersions,
     IReadOnlyList<TargetMarketFrameSnapshot> MarketFrames,
-    IReadOnlyList<string> Conflicts);
+    IReadOnlyList<string> Conflicts,
+    LocalSignalSnapshot? LocalSignal = null);
 
 public sealed record TargetCitedStatement(
     string Text,

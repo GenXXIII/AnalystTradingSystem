@@ -53,6 +53,31 @@ export interface LocalSignalChartMarker {
   reason: string | null;
 }
 
+export interface LocalAnalystCheckpoint {
+  symbol: string;
+  timeframe: MarketTimeframeCode;
+  lastProcessedCandleTimeUtc: string | null;
+  lastResult: string | null;
+  lastReason: string | null;
+  updatedAtUtc: string | null;
+  snapshot: LocalSignalSnapshot | null;
+}
+
+export interface LocalAnalystStatus {
+  enabled: boolean;
+  symbol: string;
+  configurationVersion: string;
+  evaluationIntervalSeconds: number;
+  timeframes: LocalAnalystCheckpoint[];
+}
+
+export async function getLocalAnalystStatus(): Promise<LocalAnalystStatus> {
+  const response = await apiClient.get<ApiSuccessResponse<LocalAnalystStatus>>(
+    "/api/local-analyst/status",
+  );
+  return response.data;
+}
+
 export async function getCurrentLocalSignal(
   timeframe: MarketTimeframeCode,
 ): Promise<LocalSignalSnapshot> {

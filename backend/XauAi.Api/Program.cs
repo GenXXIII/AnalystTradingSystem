@@ -116,6 +116,9 @@ static Task WriteHealthResponseAsync(HttpContext context, HealthReport report)
         {
             name = entry.Key,
             status = entry.Value.Status.ToString(),
+            message = entry.Value.Description
+                ?? entry.Value.Exception?.Message
+                ?? (entry.Value.Status == HealthStatus.Healthy ? "Healthy" : "No diagnostic message was provided."),
             state = entry.Value.Data.TryGetValue("state", out var state) ? state : null,
             enabled = entry.Value.Data.TryGetValue("enabled", out var enabled) ? enabled : null,
             connected = entry.Value.Data.TryGetValue("connected", out var connected) ? connected : null

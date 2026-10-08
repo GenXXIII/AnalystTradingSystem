@@ -60,7 +60,6 @@ internal sealed class MarketDataSynchronizationWorker(
                         settings.Symbol);
                 }
 
-                continue;
             }
 
             await SynchronizeHistoryAsync(stoppingToken);
@@ -81,7 +80,8 @@ internal sealed class MarketDataSynchronizationWorker(
                         timeframe,
                         FromUtc: null,
                         ToUtc: timeProvider.GetUtcNow(),
-                        settings.IncludeFormingCandle),
+                        IncludeFormingCandle: settings.IncludeFormingCandle,
+                        EnsureHistoryTarget: true),
                     cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

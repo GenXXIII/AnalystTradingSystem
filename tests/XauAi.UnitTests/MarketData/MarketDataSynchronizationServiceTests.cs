@@ -87,6 +87,32 @@ public sealed class MarketDataSynchronizationServiceTests
     }
 
     [Fact]
+    public async Task Incremental_sync_backfills_when_stored_history_is_below_target()
+    {
+        var store = new InMemoryStore();
+        await store.SaveAsync([CreateCandle(StartUtc.AddHours(2), MarketTimeframe.H1, complete: true)]);
+        var provider = new FakeProvider(GenerateCandles);
+        var service = CreateService(
+            provider,
+            store,
+            new FakeStateStore(),
+            batchSize: 100,
+            nowUtc: StartUtc.AddHours(5),
+            historyTargetCandles: 50);
+
+        await service.SynchronizeAsync(new MarketDataSynchronizationRequest(
+            "XAUUSD",
+            MarketTimeframe.H1,
+            FromUtc: null,
+            ToUtc: StartUtc.AddHours(5),
+            IncludeFormingCandle: false,
+            EnsureHistoryTarget: true));
+
+        Assert.Equal(StartUtc.AddDays(-4).AddHours(5), provider.Requests[0].FromUtc);
+        Assert.True(store.Candles.Count >= 50);
+    }
+
+    [Fact]
     public async Task Transient_failure_uses_bounded_retry_and_succeeds()
     {
         var failuresRemaining = 2;
@@ -231,7 +257,8 @@ public sealed class MarketDataSynchronizationServiceTests
         int maxRetries = 0,
         int retryDelaySeconds = 0,
         MarketTimeframe timeframe = MarketTimeframe.H1,
-        int initialHistoryDays = 1) =>
+        int initialHistoryDays = 1,
+        int historyTargetCandles = 250) =>
         new(
             provider,
             store,
@@ -243,6 +270,7 @@ public sealed class MarketDataSynchronizationServiceTests
                 Symbol = "XAUUSD",
                 Timeframes = [timeframe],
                 InitialHistoryDays = initialHistoryDays,
+                HistoryTargetCandles = historyTargetCandles,
                 BatchSize = batchSize,
                 MaxQueryRangeDays = 30,
                 MaxRetries = maxRetries,

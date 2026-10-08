@@ -19,7 +19,7 @@ public sealed class FullAnalystSqlTests
             InitialCatalog = $"XauAiFullTests_{Guid.NewGuid():N}"
         };
         var options = new DbContextOptionsBuilder<XauAiDbContext>()
-            .UseSqlServer(builder.ConnectionString)
+            .UseSqlServer(builder.ConnectionString, sql => sql.EnableRetryOnFailure())
             .Options;
 
         try

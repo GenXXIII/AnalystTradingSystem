@@ -14,13 +14,13 @@ public sealed class LocalAnalystSettings
 
     public int HistoryLimit { get; init; } = 250;
 
-    public int MinimumCandles { get; init; } = 205;
+    public int MinimumCandles { get; init; } = 50;
 
     public int StaleAfterIntervals { get; init; } = 3;
 
-    public int MaximumAllowedGaps { get; init; }
+    public int MaximumAllowedGaps { get; init; } = 30;
 
-    public decimal EntryScoreThreshold { get; init; } = 4m;
+    public decimal EntryScoreThreshold { get; init; } = 2m;
 
     public decimal MinimumDirectionalLead { get; init; } = 1m;
 
@@ -56,7 +56,7 @@ public sealed class LocalAnalystSettings
 
     public decimal ImportantLevelDistanceAtr { get; init; } = 0.5m;
 
-    public string ConfigurationVersion { get; init; } = "phase12-v1";
+    public string ConfigurationVersion { get; init; } = "phase12-v2";
 
     public IReadOnlyDictionary<MarketTimeframe, int> ValidityCandles { get; init; } =
         new Dictionary<MarketTimeframe, int>

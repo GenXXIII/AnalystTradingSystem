@@ -21,7 +21,9 @@ import {
 } from "lightweight-charts";
 import type { MarketQuote, StoredMarketCandle } from "@/types/market";
 import type { LocalSignalChartMarker } from "@/features/analysis/api/get-local-analyst";
-import { formatSessionCountdown, type XauUsdMarketSession } from "@/lib/market/xauusd-session";
+import type { FullAnalysisResult } from "@/features/full-analysis/api/full-analyst";
+import type { TargetAnalysisResult } from "@/features/target-analysis/api/target-analyst";
+import type { XauUsdMarketSession } from "@/lib/market/xauusd-session";
 
 const price = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
@@ -76,9 +78,11 @@ type TradingChartProps = Readonly<{
   nowUtcMilliseconds: number | null;
   marketSession: XauUsdMarketSession | null;
   signalMarkers: LocalSignalChartMarker[];
+  targetAnalysis: TargetAnalysisResult | null;
+  fullAnalysis: FullAnalysisResult | null;
 }>;
 
-export function TradingChart({ candles, quote, providerConnected, timeframe, nowUtcMilliseconds, marketSession, signalMarkers }: TradingChartProps) {
+export function TradingChart({ candles, quote, providerConnected, timeframe, nowUtcMilliseconds, marketSession, signalMarkers, targetAnalysis, fullAnalysis }: TradingChartProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -86,6 +90,8 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
   const signalMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const emaSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const priceFloorSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const targetSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const invalidationSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const activeTimeframeRef = useRef<string | null>(null);
   const fittedPointCountRef = useRef(0);
   const priceMarginRef = useRef(DEFAULT_PRICE_MARGIN);
@@ -102,10 +108,10 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
     () => addClosedSessionDisplayBars(points, timeframe),
     [points, timeframe],
   );
-  const chartSignalMarkers = useMemo(
-    () => createSignalMarkers(points, signalMarkers),
-    [points, signalMarkers],
-  );
+  const chartSignalMarkers = useMemo(() => [
+    ...createSignalMarkers(points, signalMarkers),
+    ...createFullAnalysisMarkers(points, fullAnalysis, timeframe),
+  ].sort((left, right) => Number(left.time) - Number(right.time)), [fullAnalysis, points, signalMarkers, timeframe]);
   const hasClosedSessionBars = displayPoints.length > points.length;
   const latest = points.at(-1) ?? null;
   const utcDayStartMilliseconds = nowUtcMilliseconds === null
@@ -115,7 +121,6 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
     ? Math.max(0, (nowUtcMilliseconds - Date.parse(quote.timestampUtc)) / 1_000)
     : null;
   const isLive = marketSession?.isOpen === true && providerConnected && quoteAgeSeconds !== null && quoteAgeSeconds < 90;
-  const currentTime = nowUtcMilliseconds === null ? null : new Date(nowUtcMilliseconds);
 
   useEffect(() => {
     const container = canvasRef.current;
@@ -194,6 +199,26 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
       lastValueVisible: false,
       crosshairMarkerVisible: false,
     });
+    const targetSeries = chart.addSeries(LineSeries, {
+      color: "#27d3c2",
+      lineWidth: 2,
+      lineStyle: LineStyle.Dashed,
+      lineType: LineType.Simple,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      crosshairMarkerVisible: false,
+      title: "Target",
+    });
+    const invalidationSeries = chart.addSeries(LineSeries, {
+      color: "#ff6170",
+      lineWidth: 1,
+      lineStyle: LineStyle.Dotted,
+      lineType: LineType.Simple,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      crosshairMarkerVisible: false,
+      title: "Invalidation",
+    });
     const series = chart.addSeries(CandlestickSeries, {
       upColor: "#00d897",
       downColor: "#ff465d",
@@ -238,6 +263,8 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
     signalMarkersRef.current = markerPlugin;
     emaSeriesRef.current = emaSeries;
     priceFloorSeriesRef.current = priceFloorSeries;
+    targetSeriesRef.current = targetSeries;
+    invalidationSeriesRef.current = invalidationSeries;
     return () => {
       resize.disconnect();
       chart.unsubscribeCrosshairMove(handleCrosshair);
@@ -247,6 +274,8 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
       signalMarkersRef.current = null;
       emaSeriesRef.current = null;
       priceFloorSeriesRef.current = null;
+      targetSeriesRef.current = null;
+      invalidationSeriesRef.current = null;
     };
   }, []);
 
@@ -272,6 +301,12 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
     }
     fittedPointCountRef.current = points.length;
   }, [chartSignalMarkers, displayPoints, latest, points, timeframe, utcDayStartMilliseconds]);
+
+  useEffect(() => {
+    const visibleTarget = isVisibleTarget(targetAnalysis, timeframe) ? targetAnalysis : null;
+    targetSeriesRef.current?.setData(createHorizontalLevel(points, visibleTarget?.targetPrice ?? null));
+    invalidationSeriesRef.current?.setData(createHorizontalLevel(points, visibleTarget?.invalidationPrice ?? null));
+  }, [points, targetAnalysis, timeframe]);
 
   useEffect(() => {
     seriesRef.current?.applyOptions({
@@ -312,7 +347,7 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
     : null);
   return (
     <div className="chart-wrap" data-market-state={marketSession?.isOpen === false ? "closed" : "open"} ref={shellRef}>
-      <div className="chart-canvas" ref={canvasRef} aria-label={`${points.length} ${timeframe} XAUUSD candles and ${chartSignalMarkers.length} local signal events`} />
+      <div className="chart-canvas" ref={canvasRef} aria-label={`${points.length} ${timeframe} XAUUSD candles and ${chartSignalMarkers.length} signal or analyst events`} />
       {points.length === 0 ? (
         <div className="chart-empty" role="status">
           <strong>No chart evidence yet</strong>
@@ -340,14 +375,34 @@ export function TradingChart({ candles, quote, providerConnected, timeframe, now
           <span data-overlay="ema">EMA {EMA_PERIOD}</span>
           <span data-overlay="floor">{PRICE_FLOOR_PERIOD}-bar floor</span>
           {chartSignalMarkers.length > 0 ? <span data-overlay="signal">Signal events</span> : null}
+          {isVisibleTarget(targetAnalysis, timeframe) ? <span data-overlay="target">Target levels</span> : null}
+          {isVisibleFullAnalysis(fullAnalysis, timeframe) ? <span data-overlay="full">Future analysis</span> : null}
           {hasClosedSessionBars ? <span data-overlay="closed">Closed-session carry</span> : null}
+        </div>
+      ) : null}
+      {(isVisibleTarget(targetAnalysis, timeframe) || isVisibleFullAnalysis(fullAnalysis, timeframe)) ? (
+        <div className="analyst-chart-summary" aria-live="polite">
+          {isVisibleFullAnalysis(fullAnalysis, timeframe) && fullAnalysis ? (
+            <div data-tone={fullAnalysis.decision.toLowerCase()}>
+              <span>Future</span>
+              <strong>{fullAnalysis.decision.toUpperCase()}</strong>
+              <small>{formatPercent(fullAnalysis.confidence)} · SL {formatOptionalPrice(fullAnalysis.invalidation?.price ?? null)}</small>
+            </div>
+          ) : null}
+          {isVisibleTarget(targetAnalysis, timeframe) && targetAnalysis ? (
+            <div data-tone={targetDirection(targetAnalysis)}>
+              <span>Target · best forward position</span>
+              <strong>{targetAnalysis.targetPrice === null ? "WAIT" : `TARGET ${targetDirection(targetAnalysis).toUpperCase()}`}</strong>
+              <small>{targetAnalysis.targetPrice === null ? targetAnalysis.status : `TP ${price.format(targetAnalysis.targetPrice)} · SL ${formatOptionalPrice(targetAnalysis.invalidationPrice)}`}</small>
+            </div>
+          ) : null}
         </div>
       ) : null}
       <div className={`market-session ${isLive ? "live" : "paused"}`}>
         <i aria-hidden="true" />
-        <strong>{isLive ? "XAUUSD live market" : marketSession?.isOpen === false ? "XAUUSD market closed" : providerConnected ? "XAUUSD market open · awaiting tick" : "AllTick waiting for data"}</strong>
-        {marketSession?.isOpen === false && latest ? <span>Last close {price.format(latest.close)} · {formatChartTime(latest.time)} UTC</span> : null}
-        {marketSession && currentTime ? <span>{marketSession.nextTransitionLabel} / {marketSession.nextTransitionLocalLabel} · {formatSessionCountdown(currentTime, marketSession.nextTransitionAtUtc)}</span> : quote ? <span>Last tick {utcTime.format(new Date(quote.timestampUtc))} UTC</span> : null}
+        <strong>{isLive ? "XAUUSD live market" : marketSession?.isOpen === false ? "XAUUSD market closed" : providerConnected ? "XAUUSD market open · awaiting tick" : "XAUUSD market waiting"}</strong>
+        {marketSession ? <span>{marketSession.weeklyOpenLabel} · {marketSession.weeklyCloseLabel}</span> : null}
+        {marketSession ? <span>{marketSession.nextTradingSessionLabel}</span> : null}
       </div>
       <div className="chart-controls" aria-label="Chart controls">
         <button type="button" onClick={() => zoomChart(chartRef.current, 0.78, points.length)} aria-label="Zoom in">+</button>
@@ -430,6 +485,63 @@ function signalMarkerAppearance(
     default:
       return null;
   }
+}
+
+function createFullAnalysisMarkers(
+  points: CandlestickData<UTCTimestamp>[],
+  analysis: FullAnalysisResult | null,
+  timeframe: string,
+): SeriesMarker<UTCTimestamp>[] {
+  if (!isVisibleFullAnalysis(analysis, timeframe) || !analysis || points.length === 0) return [];
+
+  const analysisTimestamp = Math.floor(Date.parse(analysis.analysisTimeUtc) / 1_000);
+  const candle = points.findLast((point) => Number(point.time) <= analysisTimestamp) ?? points.at(-1);
+  if (!candle) return [];
+
+  if (analysis.decision === "Buy") {
+    return [{ id: `full:${analysis.id}`, time: candle.time, position: "belowBar", color: "#00d897", shape: "arrowUp", text: "FUTURE BUY" }];
+  }
+  if (analysis.decision === "Sell") {
+    return [{ id: `full:${analysis.id}`, time: candle.time, position: "aboveBar", color: "#ff465d", shape: "arrowDown", text: "FUTURE SELL" }];
+  }
+  return [{ id: `full:${analysis.id}`, time: candle.time, position: "aboveBar", color: "#e6b95e", shape: "circle", text: "FUTURE WAIT" }];
+}
+
+function createHorizontalLevel(
+  points: CandlestickData<UTCTimestamp>[],
+  value: number | null,
+): LineData<UTCTimestamp>[] {
+  if (value === null || points.length === 0) return [];
+  if (points.length === 1) return [{ time: points[0].time, value }];
+  return [
+    { time: points[0].time, value },
+    { time: points[points.length - 1].time, value },
+  ];
+}
+
+function isVisibleTarget(analysis: TargetAnalysisResult | null, timeframe: string): boolean {
+  return analysis !== null
+    && analysis.timeframe === timeframe
+    && !["Cancelled", "Expired", "Invalidated", "TargetHit"].includes(analysis.status);
+}
+
+function isVisibleFullAnalysis(analysis: FullAnalysisResult | null, timeframe: string): boolean {
+  return analysis !== null
+    && analysis.timeframe === timeframe
+    && !["Cancelled", "Expired", "Invalidated"].includes(analysis.status);
+}
+
+function targetDirection(analysis: TargetAnalysisResult): "up" | "down" | "none" {
+  if (analysis.currentPrice === null || analysis.targetPrice === null) return "none";
+  return analysis.targetPrice >= analysis.currentPrice ? "up" : "down";
+}
+
+function formatPercent(value: number | null): string {
+  return value === null ? "—" : `${Math.round(value * 100)}%`;
+}
+
+function formatOptionalPrice(value: number | null): string {
+  return value === null ? "—" : price.format(value);
 }
 
 function addClosedSessionDisplayBars(

@@ -1,18 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { LocalAnalystStatus } from "@/features/analysis/api/get-local-analyst";
 import type { MarketTimeframeCode } from "@/features/market/api/get-pipeline-data";
-import type { TargetAnalysisResult } from "@/features/target-analysis/api/target-analyst";
 import {
-  cancelFullAnalysis,
-  createFullAnalysis,
-  getActiveFullAnalyses,
-  getFullAnalysisHistory,
-  getFullWorkspaceConfiguration,
-  type FullAnalysisResult,
-  type FullDecision,
-  type FullWorkspaceConfiguration,
-} from "@/features/full-analysis/api/full-analyst";
+  cancelTargetAnalysis,
+  createTargetAnalysis,
+  getActiveTargets,
+  getTargetHistory,
+  getTargetWorkspaceConfiguration,
+  type TargetAnalysisResult,
+  type TargetWorkspaceConfiguration,
+} from "@/features/target-analysis/api/target-analyst";
 
 const price = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
@@ -26,14 +25,14 @@ const utcDate = new Intl.DateTimeFormat("en-GB", {
   timeZoneName: "short",
 });
 
-export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: Readonly<{
+export function TargetAnalystWorkspace({ timeframe, localStatus, onResultChange }: Readonly<{
   timeframe: MarketTimeframeCode;
-  targetPlan: TargetAnalysisResult | null;
-  onResultChange?: (result: FullAnalysisResult | null) => void;
+  localStatus: LocalAnalystStatus | null;
+  onResultChange?: (result: TargetAnalysisResult | null) => void;
 }>) {
-  const [result, setResult] = useState<FullAnalysisResult | null>(null);
-  const [history, setHistory] = useState<FullAnalysisResult[]>([]);
-  const [configuration, setConfiguration] = useState<FullWorkspaceConfiguration[]>([]);
+  const [result, setResult] = useState<TargetAnalysisResult | null>(null);
+  const [history, setHistory] = useState<TargetAnalysisResult[]>([]);
+  const [configuration, setConfiguration] = useState<TargetWorkspaceConfiguration[]>([]);
   const [activeResultId, setActiveResultId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
@@ -46,9 +45,9 @@ export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: 
       setError(null);
       try {
         const [active, recent, workspaces] = await Promise.all([
-          getActiveFullAnalyses(),
-          getFullAnalysisHistory(),
-          getFullWorkspaceConfiguration(),
+          getActiveTargets(),
+          getTargetHistory(),
+          getTargetWorkspaceConfiguration(),
         ]);
         if (!cancelled) {
           const selected = active.find((item) => item.timeframe === timeframe) ?? active[0] ?? null;
@@ -72,7 +71,7 @@ export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: 
     let cancelled = false;
     const refreshActive = async () => {
       try {
-        const active = await getActiveFullAnalyses();
+        const active = await getActiveTargets();
         if (cancelled) return;
         const selected = active.find((item) => item.timeframe === timeframe) ?? active[0] ?? null;
         setActiveResultId(selected?.id ?? null);
@@ -84,7 +83,7 @@ export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: 
           onResultChange?.(null);
         }
       } catch {
-        // Preserve the last known result; provider diagnostics remain available in health.
+        // Preserve the last known active result; the health panel reports connectivity failures.
       }
     };
     const timer = window.setInterval(() => void refreshActive(), 30_000);
@@ -101,7 +100,7 @@ export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: 
     setRunning(true);
     setError(null);
     try {
-      const created = await createFullAnalysis(timeframe);
+      const created = await createTargetAnalysis(timeframe);
       setResult(created);
       setActiveResultId(created.status === "Active" ? created.id : null);
       onResultChange?.(created);
@@ -118,7 +117,7 @@ export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: 
     setRunning(true);
     setError(null);
     try {
-      const cancelled = await cancelFullAnalysis(result.id);
+      const cancelled = await cancelTargetAnalysis(result.id);
       setHistory((items) => items.map((item) => item.id === cancelled.id ? cancelled : item));
       setActiveResultId(null);
       setResult(null);
@@ -130,93 +129,91 @@ export function FullAnalystWorkspace({ timeframe, targetPlan, onResultChange }: 
     }
   }
 
-  const targetTakeProfit = compatibleTargetPrice(result, targetPlan);
+  const direction = targetDirection(result);
+  const signal = targetSignal(result);
+  const local = localStatus?.timeframes.find((item) => item.timeframe === timeframe)?.snapshot ?? null;
 
   return (
-    <section className="full-analyst-workspace">
+    <section className="target-analyst-workspace">
       <header className="full-analyst-toolbar">
         <div>
-          <span>Independent future direction</span>
+          <span>Forward best-position synthesis</span>
           <strong>XAUUSD · {timeframe}</strong>
-          <small>{configured}/8 Future AI workspaces configured</small>
+          <small>{configured}/8 Target AI configured · Local {local ? local.state : "checking"}</small>
         </div>
         <button type="button" className="primary-action" onClick={runAnalysis} disabled={!canRun}>
-          {running ? "Analyzing…" : activeResultId ? "Active future loaded" : "Generate Future"}
+          {running ? "Analyzing…" : activeResultId ? "Active target loaded" : "Generate Target"}
         </button>
       </header>
 
       {configured < 8 && !loading ? (
-        <p className="full-analyst-warning">Enable and configure all eight independent Future AI workspaces before requesting analysis.</p>
+        <p className="full-analyst-warning">Enable and configure all eight Target AI workspaces before requesting a target.</p>
       ) : null}
       {error ? <p className="terminal-error" role="alert">{error}</p> : null}
 
       {result ? (
-        <article className="full-analyst-result" data-decision={result.decision.toLowerCase()}>
-          <div className="full-decision-hero">
-            <span aria-hidden="true">{decisionSymbol(result.decision)}</span>
+        <article className="target-analyst-result" data-direction={direction}>
+          <div className="target-decision-hero">
+            <span aria-hidden="true">◎</span>
             <div>
-              <small>Future Analyst · real-time chart outlook · {result.symbol} · {result.timeframe}</small>
-              <strong>{result.decision.toUpperCase()}</strong>
-              <p>{result.reasoning}</p>
+              <small>Target Analyst · best forward position · {result.symbol} · {result.timeframe}</small>
+              <strong>{signal}</strong>
+              <p>{result.reasoningSummary || result.noTargetReason || "No target reasoning is available."}</p>
             </div>
-            <span className={`state-chip ${decisionTone(result.decision)}`}>{result.status}</span>
+            <span className={`state-chip ${targetTone(direction)}`}>{result.status}</span>
           </div>
 
           <div className="full-result-grid">
-            <Metric label="Signal" value={result.decision.toUpperCase()} />
+            <Metric label="Signal" value={signal} />
             <Metric label="Entry / current" value={formatPrice(result.currentPrice)} />
-            <Metric label="Take profit (Target)" value={targetTakeProfit === null ? "Run Target Analyst" : formatPrice(targetTakeProfit)} />
-            <Metric label="Stop loss (SL)" value={formatPrice(result.invalidation?.price ?? null)} />
+            <Metric label="Take profit (TP)" value={formatPrice(result.targetPrice)} />
+            <Metric label="Stop loss (SL)" value={formatPrice(result.invalidationPrice)} />
             <Metric label="Confidence" value={formatRatio(result.confidence)} />
             <Metric label="Valid until" value={formatDate(result.validUntilUtc)} />
           </div>
 
           <div className="full-result-body">
             <section>
-              <div className="analysis-section-title"><span>Specialist workspaces</span><small>{result.inputTokens + result.outputTokens} tokens</small></div>
+              <div className="analysis-section-title"><span>Specialist workspaces</span><small>{result.specialistResults.length} results</small></div>
               <div className="full-specialist-grid">
-                {result.workspaceResults.map((run) => (
-                  <div key={run.id}>
-                    <span>{run.workspace}</span>
-                    <strong className={`${decisionTextTone(run.specialistOutput?.direction)}-text`}>
-                      {run.specialistOutput?.direction ?? run.status}
+                {result.specialistResults.map((specialist) => (
+                  <div key={specialist.id}>
+                    <span>{specialist.workspace}</span>
+                    <strong className={`${candidateTone(specialist.hasCandidate)}-text`}>
+                      {specialist.hasCandidate ? formatPrice(specialist.candidateTargetPrice) : specialist.status}
                     </strong>
-                    <small>{run.cacheHit ? "Cached" : run.specialistOutput?.summary ?? run.errorMessage ?? "No output"}</small>
+                    <small>{specialist.summary || specialist.errorMessage || specialist.uncertainty || "No output"}</small>
                   </div>
                 ))}
               </div>
             </section>
             <section>
-              <div className="analysis-section-title"><span>Uncertainty & conflicts</span><small>{formatRatio(result.agreement)} agreement</small></div>
-              <p>{result.invalidation?.summary ?? "No active invalidation rule."}</p>
-              <p>{result.uncertainty}</p>
-              <ul>
-                {(result.conflicts.length > 0 ? result.conflicts : ["No material conflict recorded."]).map((conflict) => <li key={conflict}>{conflict}</li>)}
-              </ul>
+              <div className="analysis-section-title"><span>Uncertainty</span><small>{result.evidenceIds.length} evidence records</small></div>
+              <p>{result.uncertainty || result.noTargetReason || "No material uncertainty recorded."}</p>
             </section>
           </div>
 
           {result.status === "Active" ? (
             <footer className="full-result-actions">
-              <span>Direction is independent · Target Analyst supplies TP · no automatic trading</span>
-              <button type="button" onClick={cancelAnalysis} disabled={running}>Cancel Future</button>
+              <span>Analysis only · no order or automatic trading</span>
+              <button type="button" onClick={cancelAnalysis} disabled={running}>Cancel Target</button>
             </footer>
           ) : null}
         </article>
       ) : (
         <div className="analysis-empty analyst-empty-compact">
-          <strong>{loading ? "Loading Future Analyst history…" : "No Future Analyst result yet"}</strong>
-          <span>Generate an outlook after all eight workspaces are configured.</span>
+          <strong>{loading ? "Loading Target Analyst history…" : "No Target Analyst result yet"}</strong>
+          <span>Request a target after all eight workspaces are configured.</span>
         </div>
       )}
 
       {history.length > 0 ? (
         <section className="full-history">
-          <div className="analysis-section-title"><span>Future history</span><small>Preserved snapshots</small></div>
+          <div className="analysis-section-title"><span>Target history</span><small>Preserved snapshots</small></div>
           <div>
             {history.map((item) => (
               <button type="button" onClick={() => { setResult(item); onResultChange?.(item); }} aria-pressed={result?.id === item.id} key={item.id}>
-                <strong className={`${decisionTextTone(item.decision)}-text`}>{item.decision}</strong>
+                <strong className={`${targetTextTone(targetDirection(item))}-text`}>{item.targetPrice === null ? "No target" : formatPrice(item.targetPrice)}</strong>
                 <span>{item.timeframe}</span>
                 <time>{formatDate(item.analysisTimeUtc)}</time>
               </button>
@@ -232,33 +229,32 @@ function Metric({ label, value }: Readonly<{ label: string; value: string }>) {
   return <div><span>{label}</span><strong>{value}</strong></div>;
 }
 
-function compatibleTargetPrice(
-  future: FullAnalysisResult | null,
-  target: TargetAnalysisResult | null,
-): number | null {
-  if (!future || !target || target.status !== "Active" || target.timeframe !== future.timeframe
-    || target.targetPrice === null || target.currentPrice === null) return null;
-  if (future.decision === "Buy" && target.targetPrice > target.currentPrice) return target.targetPrice;
-  if (future.decision === "Sell" && target.targetPrice < target.currentPrice) return target.targetPrice;
-  return null;
+function targetDirection(result: TargetAnalysisResult | null): "up" | "down" | "none" {
+  if (!result || result.targetPrice === null || result.currentPrice === null) return "none";
+  return result.targetPrice >= result.currentPrice ? "up" : "down";
 }
 
-function decisionSymbol(decision: FullDecision): string {
-  if (decision === "Buy") return "↑";
-  if (decision === "Sell") return "↓";
-  return "—";
+function targetSignal(result: TargetAnalysisResult | null): "BUY" | "SELL" | "WAIT" {
+  const direction = targetDirection(result);
+  if (direction === "up") return "BUY";
+  if (direction === "down") return "SELL";
+  return "WAIT";
 }
 
-function decisionTone(decision: FullDecision): string {
-  if (decision === "Buy") return "complete";
-  if (decision === "Sell") return "negative";
+function targetTone(direction: "up" | "down" | "none"): string {
+  if (direction === "up") return "complete";
+  if (direction === "down") return "negative";
   return "forming";
 }
 
-function decisionTextTone(decision?: FullDecision): string {
-  if (decision === "Buy") return "positive";
-  if (decision === "Sell") return "negative";
+function targetTextTone(direction: "up" | "down" | "none"): string {
+  if (direction === "up") return "positive";
+  if (direction === "down") return "negative";
   return "warning";
+}
+
+function candidateTone(hasCandidate: boolean): string {
+  return hasCandidate ? "positive" : "warning";
 }
 
 function formatPrice(value: number | null): string {
@@ -274,5 +270,5 @@ function formatDate(value: string | null): string {
 }
 
 function message(error: unknown): string {
-  return error instanceof Error ? error.message : "Future Analyst request failed.";
+  return error instanceof Error ? error.message : "Target Analyst request failed.";
 }

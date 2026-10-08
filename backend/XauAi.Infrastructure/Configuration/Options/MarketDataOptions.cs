@@ -16,6 +16,8 @@ public sealed class MarketDataOptions
 
     public int InitialHistoryDays { get; set; } = 7;
 
+    public int HistoryTargetCandles { get; set; } = 250;
+
     public int SyncIntervalSeconds { get; set; } = 60;
 
     public int BatchSize { get; set; } = 1000;

@@ -35,6 +35,56 @@ public sealed class LocalAnalystServiceTests
     }
 
     [Fact]
+    public async Task Same_candle_is_reprocessed_after_configuration_change()
+    {
+        var candles = Candles();
+        var store = new RecordingStore
+        {
+            Checkpoint = new LocalAnalystCheckpoint(
+                "XAUUSD",
+                MarketTimeframe.M5,
+                candles[^1].OpenTimeUtc,
+                LocalSignalState.Nothing,
+                "SCORE_BELOW_THRESHOLD",
+                StartUtc,
+                Snapshot(candles[^1], LocalSignalState.Nothing, "NONE", StartUtc.AddDays(2)))
+        };
+        var service = CreateService(
+            candles,
+            store,
+            Decision(candles[^1], LocalSignalState.Buy),
+            configurationVersion: "phase12-v2");
+
+        var result = await service.EvaluateAsync("XAUUSD", MarketTimeframe.M5);
+
+        Assert.False(result.IsCached);
+        Assert.Equal(1, store.SaveCalls);
+    }
+
+    [Fact]
+    public async Task Same_candle_is_reprocessed_after_retryable_data_failure()
+    {
+        var candles = Candles();
+        var store = new RecordingStore
+        {
+            Checkpoint = new LocalAnalystCheckpoint(
+                "XAUUSD",
+                MarketTimeframe.M5,
+                candles[^1].OpenTimeUtc,
+                LocalSignalState.Nothing,
+                "INSUFFICIENT_HISTORY",
+                StartUtc,
+                Snapshot(candles[^1], LocalSignalState.Nothing, "NONE", StartUtc.AddDays(2)))
+        };
+        var service = CreateService(candles, store, Decision(candles[^1], LocalSignalState.Sell));
+
+        var result = await service.EvaluateAsync("XAUUSD", MarketTimeframe.M5);
+
+        Assert.False(result.IsCached);
+        Assert.Equal(1, store.SaveCalls);
+    }
+
+    [Fact]
     public async Task Invalid_candle_is_recorded_as_nothing_and_never_generates_a_signal()
     {
         var candles = Candles().ToArray();
@@ -77,7 +127,8 @@ public sealed class LocalAnalystServiceTests
     private static LocalAnalystService CreateService(
         IReadOnlyList<StoredMarketCandle> candles,
         RecordingStore store,
-        LocalSignalDecision engineDecision) =>
+        LocalSignalDecision engineDecision,
+        string configurationVersion = "phase12-v1") =>
         new(
             new TestMarketStore(candles),
             new TestTechnicalAnalysis(),
@@ -90,7 +141,8 @@ public sealed class LocalAnalystServiceTests
                 Timeframes = [MarketTimeframe.M5],
                 HistoryLimit = 250,
                 MinimumCandles = 205,
-                MaximumAllowedGaps = 0
+                MaximumAllowedGaps = 0,
+                ConfigurationVersion = configurationVersion
             },
             new FixedTimeProvider(candles[^1].CloseTimeUtc.AddMinutes(1)),
             NullLogger<LocalAnalystService>.Instance);

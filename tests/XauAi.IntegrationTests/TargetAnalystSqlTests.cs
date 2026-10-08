@@ -11,6 +11,78 @@ namespace XauAi.IntegrationTests;
 public sealed class TargetAnalystSqlTests
 {
     [SqlServerFact]
+    public async Task No_valid_target_preserves_invalid_provider_output_as_safe_json()
+    {
+        var serverConnection = Environment.GetEnvironmentVariable(SqlServerFactAttribute.EnvironmentVariableName)!;
+        var builder = new SqlConnectionStringBuilder(serverConnection)
+        {
+            InitialCatalog = $"XauAiTargetTests_{Guid.NewGuid():N}"
+        };
+        var options = new DbContextOptionsBuilder<XauAiDbContext>()
+            .UseSqlServer(builder.ConnectionString, sql => sql.EnableRetryOnFailure())
+            .Options;
+
+        try
+        {
+            await using var context = new XauAiDbContext(options);
+            await context.Database.MigrateAsync();
+            var store = new EfTargetAnalysisStore(context);
+            var now = new DateTimeOffset(2026, 10, 8, 2, 0, 0, TimeSpan.Zero);
+            var id = Guid.NewGuid();
+            await store.CreateJobAsync(new TargetAnalysisJobWriteModel(
+                id,
+                "XAUUSD",
+                MarketTimeframe.M15,
+                now,
+                "phase13-master-v1",
+                "phase13-v1",
+                now));
+
+            var configuration = Configuration(TargetWorkspace.Master);
+            var masterRun = new TargetWorkspaceRunResult(
+                Guid.NewGuid(),
+                TargetWorkspace.Master,
+                TargetWorkspaceExecutionStatus.Failed,
+                null,
+                null,
+                "provider returned non-JSON text",
+                configuration,
+                null,
+                null,
+                100,
+                TargetAnalysisErrorCodes.InvalidResponse,
+                "The provider response was not valid JSON.",
+                now,
+                now.AddSeconds(1));
+
+            var completed = await store.CompleteNoValidTargetAsync(new TargetNoValidTargetWriteModel(
+                id,
+                "No workspace produced a valid target.",
+                "The result safely falls back to no valid target.",
+                "Provider output could not be validated.",
+                [masterRun],
+                configuration.Provider,
+                configuration.Model,
+                configuration.PromptVersion,
+                configuration.ConfigurationVersion,
+                now.AddSeconds(1)));
+
+            var persisted = await context.TargetSpecialistResults.AsNoTracking()
+                .SingleAsync(item => item.Id == masterRun.Id);
+            using var output = JsonDocument.Parse(persisted.OutputJson);
+
+            Assert.Equal(TargetAnalysisStatus.NoValidTarget, completed.Status);
+            Assert.Single(completed.SpecialistResults);
+            Assert.Equal("provider returned non-JSON text", output.RootElement.GetProperty("rawResponse").GetString());
+        }
+        finally
+        {
+            await using var cleanup = new XauAiDbContext(options);
+            await cleanup.Database.EnsureDeletedAsync();
+        }
+    }
+
+    [SqlServerFact]
     public async Task Active_target_can_be_cancelled_without_deleting_snapshot_specialists_or_history()
     {
         var serverConnection = Environment.GetEnvironmentVariable(SqlServerFactAttribute.EnvironmentVariableName)!;
@@ -19,7 +91,7 @@ public sealed class TargetAnalystSqlTests
             InitialCatalog = $"XauAiTargetTests_{Guid.NewGuid():N}"
         };
         var options = new DbContextOptionsBuilder<XauAiDbContext>()
-            .UseSqlServer(builder.ConnectionString)
+            .UseSqlServer(builder.ConnectionString, sql => sql.EnableRetryOnFailure())
             .Options;
 
         try

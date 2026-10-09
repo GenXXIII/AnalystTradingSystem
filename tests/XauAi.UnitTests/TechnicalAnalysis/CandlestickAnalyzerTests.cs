@@ -18,6 +18,13 @@ public sealed class CandlestickAnalyzerTests
         { "BearishEngulfing", Candles((100m, 102.5m, 99.5m, 102m), (102.5m, 103m, 99m, 99.5m)) },
         { "MorningStar", Candles((103m, 103.5m, 99.5m, 100m), (100.2m, 100.5m, 99.8m, 100.1m), (100m, 102.5m, 99.8m, 102m)) },
         { "EveningStar", Candles((100m, 103.5m, 99.5m, 103m), (102.9m, 103.2m, 102.5m, 102.8m), (103m, 103.1m, 100m, 100.5m)) },
+        { "SpinningTop", Candles((100m, 103m, 97m, 101m)) },
+        { "BullishHarami", Candles((105m, 106m, 99m, 100m), (101m, 104m, 100.5m, 103m)) },
+        { "BearishHarami", Candles((100m, 106m, 99m, 105m), (104m, 104.5m, 101m, 102m)) },
+        { "PiercingLine", Candles((105m, 106m, 99m, 100m), (99m, 104m, 98m, 103m)) },
+        { "DarkCloudCover", Candles((100m, 106m, 99m, 105m), (106m, 107m, 101m, 102m)) },
+        { "ThreeWhiteSoldiers", Candles((100m, 103m, 99m, 102m), (101m, 104m, 100m, 103m), (102m, 105m, 101m, 104m)) },
+        { "ThreeBlackCrows", Candles((104m, 105m, 101m, 102m), (103m, 104m, 100m, 101m), (102m, 103m, 99m, 100m)) },
         { "InsideBar", Candles((100m, 105m, 95m, 102m), (101m, 104m, 96m, 103m)) },
         { "OutsideBar", Candles((100m, 103m, 97m, 102m), (101m, 105m, 95m, 104m)) }
     };

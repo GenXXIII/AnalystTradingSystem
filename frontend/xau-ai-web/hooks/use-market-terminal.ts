@@ -8,8 +8,10 @@ import {
 import {
   getLocalAnalystStatus,
   getLocalSignalChartMarkers,
+  getLocalSignalHistory,
   type LocalAnalystStatus,
   type LocalSignalChartMarker,
+  type LocalSignalHistoryResult,
 } from "@/features/analysis/api/get-local-analyst";
 import {
   getLatestStoredCandles,
@@ -52,6 +54,7 @@ export function useMarketTerminal() {
   const [multiTimeframe, setMultiTimeframe] = useState<MultiTimeframeAnalysis | null>(null);
   const [localStatus, setLocalStatus] = useState<LocalAnalystStatus | null>(null);
   const [signalMarkers, setSignalMarkers] = useState<LocalSignalChartMarker[]>([]);
+  const [localHistory, setLocalHistory] = useState<LocalSignalHistoryResult | null>(null);
   const [localSignalError, setLocalSignalError] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +83,7 @@ export function useMarketTerminal() {
       multiTimeframeResult,
       localStatusResult,
       markerResult,
+      localHistoryResult,
     ] = await Promise.allSettled([
       getMarketProviderStatus(),
       getXauUsdQuote(),
@@ -90,6 +94,7 @@ export function useMarketTerminal() {
       getMultiTimeframeAnalysis(),
       getLocalAnalystStatus(),
       getLocalSignalChartMarkers(selectedTimeframe),
+      getLocalSignalHistory(200),
     ]);
 
     if (sequence !== requestSequence.current) return;
@@ -113,6 +118,7 @@ export function useMarketTerminal() {
       setLocalSignalError(toLocalAnalystError(localStatusResult.reason));
     }
     if (markerResult.status === "fulfilled") setSignalMarkers(markerResult.value);
+    if (localHistoryResult.status === "fulfilled") setLocalHistory(localHistoryResult.value);
 
     const analysisFailures = [analysisResult, multiTimeframeResult]
       .filter((result): result is PromiseRejectedResult => result.status === "rejected")
@@ -228,6 +234,7 @@ export function useMarketTerminal() {
     analysis,
     multiTimeframe,
     localStatus,
+    localHistory,
     signalMarkers,
     localSignalError,
     analysisError,

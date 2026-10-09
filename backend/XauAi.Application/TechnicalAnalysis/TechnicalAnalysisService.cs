@@ -12,6 +12,7 @@ internal sealed class TechnicalAnalysisService(
     ISupportResistanceAnalyzer supportResistanceAnalyzer,
     IPriceActionAnalyzer priceActionAnalyzer,
     IVolatilityAnalyzer volatilityAnalyzer,
+    IStrategyFeatureAnalyzer strategyFeatureAnalyzer,
     IMarketSessionCalendar sessionCalendar,
     TechnicalAnalysisSettings settings,
     TimeProvider timeProvider,
@@ -58,6 +59,16 @@ internal sealed class TechnicalAnalysisService(
         var candleAnalysis = candlestickAnalyzer.Analyze(normalized.Candles, request.Timeframe);
         var priceAction = priceActionAnalyzer.Analyze(normalized.Candles, settings);
         var volatility = volatilityAnalyzer.Analyze(normalized.Candles, indicators, settings);
+        var strategies = strategyFeatureAnalyzer.Analyze(
+            normalized.Candles,
+            request.Timeframe,
+            indicators,
+            trend,
+            structure,
+            priceAction,
+            volatility,
+            levels,
+            candleAnalysis.Patterns);
         var conflicts = DetectConflicts(trend, momentum, structure, candleAnalysis.Patterns);
         var confluence = BuildConfluence(
             trend,
@@ -100,7 +111,10 @@ internal sealed class TechnicalAnalysisService(
                 gapCount,
                 CountCalculated(indicators),
                 insufficient,
-                cutoff));
+                cutoff))
+        {
+            Strategies = strategies
+        };
 
         logger.LogInformation(
             "Technical analysis completed for {Symbol} {Timeframe} at {CutoffUtc} in {DurationMilliseconds} ms using {CandleCount} candles; {InsufficientCount} indicators insufficient",

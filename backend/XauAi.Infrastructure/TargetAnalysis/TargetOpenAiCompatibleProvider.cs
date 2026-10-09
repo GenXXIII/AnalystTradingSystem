@@ -27,7 +27,6 @@ internal sealed class TargetOpenAiCompatibleProvider(
         CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
-        var isGroq = string.Equals(configuration.Provider, "Groq", StringComparison.OrdinalIgnoreCase);
         var models = ModelCandidates(configuration.Model, configuration.FallbackModels);
         var modelIndex = 0;
         for (var attempt = 0; ; attempt++)
@@ -52,9 +51,7 @@ internal sealed class TargetOpenAiCompatibleProvider(
                         continue;
                     }
 
-                    if ((response.StatusCode == HttpStatusCode.TooManyRequests
-                            || IsTransient(response.StatusCode)
-                            || isGroq && response.StatusCode == HttpStatusCode.BadRequest)
+                    if (CanTryFallback(response.StatusCode)
                         && modelIndex < models.Count - 1)
                     {
                         modelIndex++;
@@ -67,6 +64,13 @@ internal sealed class TargetOpenAiCompatibleProvider(
 
                 await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
                 using var document = await JsonDocument.ParseAsync(stream, cancellationToken: timeout.Token);
+                if (ReachedTokenLimit(document.RootElement))
+                {
+                    throw new TargetAnalysisException(
+                        TargetAnalysisErrorCodes.TokenLimit,
+                        "The target AI model reached its output token limit.");
+                }
+
                 if (!TryGetContent(document.RootElement, out var content) || string.IsNullOrWhiteSpace(content))
                 {
                     throw new TargetAnalysisException(
@@ -84,6 +88,14 @@ internal sealed class TargetOpenAiCompatibleProvider(
                         ? values.FirstOrDefault()
                         : null,
                     ReadModel(document.RootElement));
+            }
+            catch (TargetAnalysisException exception) when (
+                CanRecoverWithFallback(exception.Code)
+                && modelIndex < models.Count - 1)
+            {
+                modelIndex++;
+                attempt = -1;
+                continue;
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
@@ -127,6 +139,13 @@ internal sealed class TargetOpenAiCompatibleProvider(
             }
             catch (JsonException exception)
             {
+                if (modelIndex < models.Count - 1)
+                {
+                    modelIndex++;
+                    attempt = -1;
+                    continue;
+                }
+
                 throw new TargetAnalysisException(
                     TargetAnalysisErrorCodes.InvalidResponse,
                     "The target AI provider returned malformed response JSON.",
@@ -193,19 +212,19 @@ internal sealed class TargetOpenAiCompatibleProvider(
     {
         var responsibility = request.Workspace switch
         {
-            TargetWorkspace.Structure => "Analyze multi-timeframe HH/HL, LH/LL, BOS, CHoCH, trend, range, transition, and structural invalidation only.",
+            TargetWorkspace.Structure => "Analyze multi-timeframe HH/HL, LH/LL, BOS, CHoCH, Dow structure, supplied SMC/ICT structure, Wyckoff range phase, trend, transition, and structural invalidation only.",
             TargetWorkspace.Liquidity => "Analyze price-derived prior highs/lows, equal levels, swing pools, sweeps, reactions, attractions, and invalidation. Never claim order-book liquidity.",
-            TargetWorkspace.Candle => "Analyze contextual rejection, engulfing, momentum, breakout, failed breakout, continuation, exhaustion, and reversal candles. Never choose a target from a pattern alone.",
-            TargetWorkspace.Flow => "Analyze momentum, directional pressure, acceleration, impulse, pullback, exhaustion, tick volume, and volatility. Never fabricate order flow.",
-            TargetWorkspace.Ktr => "Analyze only supplied KTR, important levels, session levels, volatility-adjusted levels, and breakout/retest zones. Never invent a level.",
+            TargetWorkspace.Candle => "Analyze all supplied closed-candle features: engulfing, hammer/star, harami, piercing/dark cloud, soldiers/crows, doji/spinning top, pin bars, NR4/NR7, FVG/IFVG, rejection, displacement, breakout/failure/retest, continuation, exhaustion, reversal, and location. Never choose a target from a pattern alone.",
+            TargetWorkspace.Flow => "Analyze broker tick-volume VSA, price/activity pressure proxy, acceleration, divergence, high-activity low-progress, breakout confirmation, exhaustion, spread/data quality, and session activity. Never claim true delta, CVD, footprint, absorption, or exchange volume profile unless explicitly supplied.",
+            TargetWorkspace.Ktr => "Analyze only supplied OP and volatility-normalized KTR levels, support/resistance, session levels, Fibonacci context, and breakout/retest zones. Never invent a level.",
             TargetWorkspace.News => "Analyze relevant economic, USD, macro, central-bank, news, and analyst information. Keep facts separate from interpretation and compare expected with observed reaction.",
             TargetWorkspace.Risk => "Evaluate the specialist candidate set for distance, obstacles, volatility, news risk, conflicts, data quality, invalidation, and uncertainty. You may and should reject an unsupported target.",
-            TargetWorkspace.Master => "Synthesize specialist outputs by evidence strength, independence, freshness, conflict, and obstacles. Do not count votes. Select exactly one target only when defensible; otherwise return no valid target.",
+            TargetWorkspace.Master => "Synthesize specialist outputs by evidence strength, independence, freshness, conflict, and obstacles. Select the best defensible target possibility without demanding perfect agreement; never decide by vote count.",
             _ => throw new ArgumentOutOfRangeException(nameof(request), request.Workspace, null)
         };
         var contract = request.Workspace == TargetWorkspace.Master
-            ? "For validTarget=true, return one targetPrice, one invalidationPrice, a future validUntilUtc, at least two independent supportingWorkspaces, and cited evidence. For validTarget=false, all three lifecycle values must be null and noTargetReason is required."
-            : "Return at most one candidate. When hasCandidate=false, both candidate prices must be null. Risk must set riskAcceptable truthfully; other workspaces use false when support is insufficient.";
+            ? "Prefer one best evidence-backed target possibility when two independent workspaces and Risk make it defensible; perfect confluence is not required. For validTarget=true, return one targetPrice, one invalidationPrice, a future validUntilUtc, at least two independent supportingWorkspaces, and cited evidence. Use validTarget=false only when no target and invalidation pair is defensible; then all three lifecycle values must be null and noTargetReason is required."
+            : "Return at most one plausible evidence-backed candidate when this workspace can defend both a target and invalidation; perfect confluence is not required, and conflicts belong in confidence, obstacles, and uncertainty. When hasCandidate=false, both candidate prices must be null. Risk must set riskAcceptable truthfully; other workspaces use false only when no defensible candidate exists.";
         return $$"""
             You are the independent Target {{request.Workspace}} AI workspace for XAUUSD.
             {{responsibility}}
@@ -350,16 +369,34 @@ internal sealed class TargetOpenAiCompatibleProvider(
             ? model.GetString()
             : null;
 
+    private static bool ReachedTokenLimit(JsonElement root) =>
+        root.TryGetProperty("choices", out var choices)
+        && choices.ValueKind == JsonValueKind.Array
+        && choices.GetArrayLength() > 0
+        && choices[0].TryGetProperty("finish_reason", out var finishReason)
+        && finishReason.ValueKind == JsonValueKind.String
+        && string.Equals(finishReason.GetString(), "length", StringComparison.OrdinalIgnoreCase);
+
     private static bool IsTransient(HttpStatusCode statusCode) =>
         statusCode == HttpStatusCode.RequestTimeout
         || (int)statusCode >= 500;
+
+    private static bool CanTryFallback(HttpStatusCode statusCode) =>
+        statusCode is not HttpStatusCode.Unauthorized and not HttpStatusCode.Forbidden;
+
+    private static bool CanRecoverWithFallback(string errorCode) => errorCode is
+        TargetAnalysisErrorCodes.RateLimited
+        or TargetAnalysisErrorCodes.Timeout
+        or TargetAnalysisErrorCodes.TokenLimit
+        or TargetAnalysisErrorCodes.InvalidResponse
+        or TargetAnalysisErrorCodes.Unavailable;
 
     private static TargetAnalysisException Failure(HttpStatusCode statusCode) => statusCode switch
     {
         HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new TargetAnalysisException(
             TargetAnalysisErrorCodes.AuthenticationFailed,
             "The target AI provider rejected authentication."),
-        HttpStatusCode.TooManyRequests => new TargetAnalysisException(
+        HttpStatusCode.TooManyRequests or HttpStatusCode.PaymentRequired => new TargetAnalysisException(
             TargetAnalysisErrorCodes.RateLimited,
             "The target AI provider rate limit was reached."),
         HttpStatusCode.RequestTimeout or HttpStatusCode.GatewayTimeout => new TargetAnalysisException(

@@ -238,6 +238,44 @@ public sealed record TechnicalConfluenceResult(
     IReadOnlyList<string> VolatilityEvidence,
     IReadOnlyList<string> Conflicts);
 
+public sealed record StrategySetupResult(
+    string Family,
+    string Strategy,
+    AnalyticalDirection Direction,
+    string State,
+    decimal Quality,
+    IReadOnlyList<string> Evidence);
+
+public sealed record FlowFeatureResult(
+    string DataMethod,
+    bool TrueBidAskDeltaAvailable,
+    decimal? TickVolumeRatio,
+    decimal? DirectionalPressure,
+    AnalyticalDirection Direction,
+    string Divergence,
+    bool AbsorptionCandidate,
+    bool ExhaustionCandidate,
+    bool BreakoutConfirmed,
+    IReadOnlyList<string> Evidence);
+
+public sealed record KtrLevelResult(
+    string Label,
+    decimal Price,
+    int Multiple);
+
+public sealed record KtrLevelSet(
+    decimal OpeningPrice,
+    decimal Unit,
+    string Method,
+    IReadOnlyList<KtrLevelResult> Levels);
+
+public sealed record StrategyAnalysisResult(
+    IReadOnlyList<StrategySetupResult> Setups,
+    FlowFeatureResult Flow,
+    KtrLevelSet Ktr,
+    IReadOnlyList<string> CoveredFamilies,
+    IReadOnlyList<string> UnavailableCapabilities);
+
 public sealed record AnalysisDiagnostics(
     long DurationMilliseconds,
     int CandlesRead,
@@ -265,7 +303,10 @@ public sealed record TechnicalAnalysisResult(
     IndicatorSet Indicators,
     TechnicalConfluenceResult Confluence,
     IReadOnlyList<string> Conflicts,
-    AnalysisDiagnostics Diagnostics);
+    AnalysisDiagnostics Diagnostics)
+{
+    public StrategyAnalysisResult? Strategies { get; init; }
+}
 
 public sealed record TimeframeAnalysisSummary(
     MarketTimeframe Timeframe,

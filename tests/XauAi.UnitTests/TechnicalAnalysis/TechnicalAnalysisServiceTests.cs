@@ -49,6 +49,13 @@ public sealed class TechnicalAnalysisServiceTests
         Assert.Equal(first.MarketStructure.Direction, second.MarketStructure.Direction);
         Assert.Equal(first.Conflicts, second.Conflicts);
         Assert.Equal(first.LastCandleCloseTimeUtc, second.LastCandleCloseTimeUtc);
+        Assert.NotNull(first.Strategies);
+        Assert.Equal(
+            System.Text.Json.JsonSerializer.Serialize(first.Strategies),
+            System.Text.Json.JsonSerializer.Serialize(second.Strategies));
+        Assert.Contains(first.Strategies.CoveredFamilies, value => value.Contains("Wyckoff", StringComparison.Ordinal));
+        Assert.Contains(first.Strategies.UnavailableCapabilities, value => value.Contains("True bid/ask delta", StringComparison.Ordinal));
+        Assert.Equal(7, first.Strategies.Ktr.Levels.Count);
     }
 
     [Fact]
@@ -118,6 +125,7 @@ public sealed class TechnicalAnalysisServiceTests
             new SupportResistanceAnalyzer(),
             new PriceActionAnalyzer(),
             new VolatilityAnalyzer(),
+            new StrategyFeatureAnalyzer(),
             new DefaultMarketSessionCalendar(),
             settings,
             new FixedTimeProvider(now),

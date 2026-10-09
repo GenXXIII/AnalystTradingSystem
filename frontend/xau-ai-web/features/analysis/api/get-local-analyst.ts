@@ -71,6 +71,13 @@ export interface LocalAnalystStatus {
   timeframes: LocalAnalystCheckpoint[];
 }
 
+export interface LocalSignalHistoryResult {
+  symbol: string;
+  timeframe: MarketTimeframeCode | null;
+  limit: number;
+  signals: LocalSignalSnapshot[];
+}
+
 export async function getLocalAnalystStatus(): Promise<LocalAnalystStatus> {
   const response = await apiClient.get<ApiSuccessResponse<LocalAnalystStatus>>(
     "/api/local-analyst/status",
@@ -94,6 +101,18 @@ export async function getLocalSignalChartMarkers(
   const query = new URLSearchParams({ limit: String(limit) });
   const response = await apiClient.get<ApiSuccessResponse<LocalSignalChartMarker[]>>(
     `/api/local-analyst/XAUUSD/${timeframe}/markers?${query.toString()}`,
+  );
+  return response.data;
+}
+
+export async function getLocalSignalHistory(
+  limit = 200,
+  timeframe?: MarketTimeframeCode,
+): Promise<LocalSignalHistoryResult> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (timeframe) query.set("timeframe", timeframe);
+  const response = await apiClient.get<ApiSuccessResponse<LocalSignalHistoryResult>>(
+    `/api/local-analyst/XAUUSD/history?${query.toString()}`,
   );
   return response.data;
 }

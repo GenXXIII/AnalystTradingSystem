@@ -9,9 +9,10 @@ import { useAnalystHealth, type AnalystHealthSnapshot } from "@/hooks/use-analys
 import { TradingChart } from "@/components/trading-chart";
 import { FullAnalystWorkspace } from "@/components/full-analyst-workspace";
 import { TargetAnalystWorkspace } from "@/components/target-analyst-workspace";
+import { AiWorkspaceMonitor } from "@/components/ai-workspace-monitor";
 import type { FullAnalysisResult } from "@/features/full-analysis/api/full-analyst";
 import type { TargetAnalysisResult } from "@/features/target-analysis/api/target-analyst";
-import type { LocalAnalystStatus } from "@/features/analysis/api/get-local-analyst";
+import type { LocalAnalystStatus, LocalSignalHistoryResult, LocalSignalSnapshot } from "@/features/analysis/api/get-local-analyst";
 import type {
   EconomicObservation,
   EconomicSeries,
@@ -43,6 +44,7 @@ const timeframeLabels: Record<MarketTimeframeCode, string> = {
 };
 const moduleLaunchers = [
   { key: "analysis", eyebrow: "Analysis", title: "Application-owned engine" },
+  { key: "ai", eyebrow: "AI", title: "16-workspace monitor" },
   { key: "news", eyebrow: "Intelligence", title: "News" },
   { key: "economy", eyebrow: "Macro", title: "Economic schedule" },
   { key: "quality", eyebrow: "Operations", title: "Provider & storage" },
@@ -135,7 +137,9 @@ export function MarketTerminal() {
     ? news.error ?? news.status?.provider.message ?? "Latest normalized news from SQL storage."
     : activeModule === "economy"
       ? economy.error ?? economy.status?.provider.message ?? "Latest normalized economic observations from SQL storage."
-      : terminal.error ?? terminal.analysisError ?? "Module data is live and read only.";
+      : activeModule === "ai"
+        ? analystHealth.error ?? "Latest persisted Target and Future workspace execution, errors, and token utilization."
+        : terminal.error ?? terminal.analysisError ?? "Module data is live and read only.";
 
   return (
     <main className="terminal-shell">
@@ -186,6 +190,8 @@ export function MarketTerminal() {
                 nowUtcMilliseconds={now?.getTime() ?? null}
                 marketSession={marketSession}
                 signalMarkers={terminal.signalMarkers}
+                localSignal={terminal.localStatus?.timeframes.find((item) => item.timeframe === terminal.timeframe)?.snapshot ?? null}
+                analysis={terminal.analysis?.timeframe === terminal.timeframe ? terminal.analysis : null}
                 targetAnalysis={targetChartResult}
                 fullAnalysis={fullChartResult}
               />
@@ -222,8 +228,17 @@ export function MarketTerminal() {
                   analysis={terminal.analysis?.timeframe === terminal.timeframe ? terminal.analysis : null}
                   multiTimeframe={terminal.multiTimeframe}
                   localStatus={terminal.localStatus}
+                  localHistory={terminal.localHistory}
                   error={terminal.analysisError}
                   loading={terminal.state === "loading"}
+                />
+              ) : null}
+              {activeModule === "ai" ? (
+                <AiWorkspaceMonitor
+                  snapshot={analystHealth.snapshot}
+                  loading={analystHealth.loading}
+                  error={analystHealth.error}
+                  onRefresh={analystHealth.refresh}
                 />
               ) : null}
               {activeModule === "news" ? <NewsModule articles={news.articles} status={news.status} loading={news.loading} error={news.error} onRefresh={news.refresh} /> : null}
@@ -277,8 +292,10 @@ function AnalystRail({ timeframe, localStatus, onTargetResultChange, onFullResul
     <section className="terminal-panel analyst-rail">
       <header className="analyst-switcher" role="tablist" aria-label="AI analyst workspace">
         <button
+          id="analyst-tab-target"
           type="button"
           role="tab"
+          aria-controls="analyst-panel-target"
           aria-selected={activeWorkspace === "target"}
           onClick={() => setActiveWorkspace("target")}
         >
@@ -286,8 +303,10 @@ function AnalystRail({ timeframe, localStatus, onTargetResultChange, onFullResul
           <strong>Target Analyst</strong>
         </button>
         <button
+          id="analyst-tab-full"
           type="button"
           role="tab"
+          aria-controls="analyst-panel-full"
           aria-selected={activeWorkspace === "full"}
           onClick={() => setActiveWorkspace("full")}
         >
@@ -295,10 +314,13 @@ function AnalystRail({ timeframe, localStatus, onTargetResultChange, onFullResul
           <strong>Future Analyst</strong>
         </button>
       </header>
-      <div className="analyst-rail-body" role="tabpanel">
-        {activeWorkspace === "target"
-          ? <TargetAnalystWorkspace timeframe={timeframe} localStatus={localStatus} onResultChange={onTargetResultChange} />
-          : <FullAnalystWorkspace timeframe={timeframe} onResultChange={onFullResultChange} />}
+      <div className="analyst-rail-body">
+        <div id="analyst-panel-target" role="tabpanel" aria-labelledby="analyst-tab-target" hidden={activeWorkspace !== "target"}>
+          <TargetAnalystWorkspace timeframe={timeframe} localStatus={localStatus} onResultChange={onTargetResultChange} />
+        </div>
+        <div id="analyst-panel-full" role="tabpanel" aria-labelledby="analyst-tab-full" hidden={activeWorkspace !== "full"}>
+          <FullAnalystWorkspace timeframe={timeframe} onResultChange={onFullResultChange} />
+        </div>
       </div>
     </section>
   );
@@ -511,10 +533,11 @@ function ProviderHealthRow({ row }: Readonly<{ row: HealthRowData }>) {
   );
 }
 
-function TechnicalAnalysisPanel({ analysis, multiTimeframe, localStatus, error, loading }: Readonly<{
+function TechnicalAnalysisPanel({ analysis, multiTimeframe, localStatus, localHistory, error, loading }: Readonly<{
   analysis: TechnicalAnalysis | null;
   multiTimeframe: MultiTimeframeAnalysis | null;
   localStatus: LocalAnalystStatus | null;
+  localHistory: LocalSignalHistoryResult | null;
   error: string | null;
   loading: boolean;
 }>) {
@@ -536,6 +559,10 @@ function TechnicalAnalysisPanel({ analysis, multiTimeframe, localStatus, error, 
   const nearestLevels = analysis.supportResistance.slice(0, 2);
   const patterns = analysis.candlestickPatterns.slice(0, 2);
   const conflicts = [...new Set([...analysis.conflicts, ...(multiTimeframe?.conflicts ?? [])])];
+  const resolvedSignals = (localHistory?.signals ?? []).filter((signal) => signal.status === "STOPPED" && signal.reason !== "EXPIRED");
+  const winningSignals = resolvedSignals.filter((signal) => signal.reason === "TARGET_REACHED");
+  const losingSignals = resolvedSignals.filter((signal) => signal.reason !== "TARGET_REACHED");
+  const winRate = resolvedSignals.length === 0 ? null : winningSignals.length / resolvedSignals.length;
   return (
     <article className="terminal-panel analysis-panel">
       <PanelHeader eyebrow="Application-owned engine" title={`${analysis.timeframe} technical analysis`}>
@@ -547,6 +574,8 @@ function TechnicalAnalysisPanel({ analysis, multiTimeframe, localStatus, error, 
         <AnalysisTile label="Structure" value={formatEvidence(analysis.marketStructure.structure)} tone={directionTone(analysis.marketStructure.direction)} detail={analysis.marketStructure.direction} />
         <AnalysisTile label={`RSI ${analysis.momentum.rsi.period}`} value={formatNumber(analysis.momentum.rsi.value, 1)} tone={directionTone(analysis.momentum.rsi.momentum)} detail={analysis.momentum.rsi.zone} />
         <AnalysisTile label="Volatility" value={formatEvidence(analysis.volatility.regime)} detail={`ATR ${formatNumber(analysis.volatility.atr.value, 2)}`} />
+        <AnalysisTile label="Resolved win rate" value={winRate === null ? "—" : `${Math.round(winRate * 100)}%`} tone={winRate === null ? "neutral" : winRate >= 0.5 ? "positive" : "negative"} detail={`${winningSignals.length} win · ${losingSignals.length} loss · expired excluded`} />
+        <AnalysisTile label="Strategy setups" value={String(analysis.strategies?.setups.length ?? 0)} detail={`${analysis.strategies?.coveredFamilies.length ?? 0} deterministic families`} />
       </div>
 
       <section className="analysis-section">
@@ -569,14 +598,54 @@ function TechnicalAnalysisPanel({ analysis, multiTimeframe, localStatus, error, 
       </section>
 
       <section className="analysis-section">
+        <div className="analysis-section-title"><span>Signal performance & detail</span><small>{resolvedSignals.length} resolved · real SQL history</small></div>
+        <div className="local-signal-history">
+          {(localHistory?.signals ?? []).slice(0, 12).map((signal) => (
+            <div key={signal.signalId ?? `${signal.timeframe}-${signal.signalCandleTimeUtc}`} data-outcome={localSignalOutcome(signal).tone}>
+              <strong>{signal.timeframe} {(signal.originDirection ?? signal.state).toUpperCase()}</strong>
+              <span>{localSignalOutcome(signal).label}</span>
+              <small>Entry {formatPrice(signal.signalPrice)} · TP {formatPrice(signal.targetPrice)} · SL {formatPrice(signal.invalidationPrice)}</small>
+              <small>Score {formatNumber(signal.score, 1)}/{formatNumber(signal.maxScore, 1)} · confidence {Math.round(signal.confidence * 100)}% · {formatDate(signal.endedAtUtc ?? signal.updatedAtUtc)}</small>
+              <small>{signal.conditions.filter((condition) => condition.longMatched || condition.shortMatched).map((condition) => `${condition.component}: ${formatEvidence(condition.state)}`).join(" · ") || formatEvidence(signal.reason ?? "No matched condition detail")}</small>
+            </div>
+          ))}
+          {(localHistory?.signals.length ?? 0) === 0 ? <span className="analysis-muted">No stored local signals yet. Win rate appears only after signals resolve.</span> : null}
+        </div>
+        <p className="analysis-method-note">Win = TARGET_REACHED. Loss = other resolved STOP reasons. Active and expired signals are not graded.</p>
+      </section>
+
+      <section className="analysis-section">
         <div className="analysis-section-title"><span>Indicator evidence</span><small>{analysis.diagnostics.candlesUsed} closed candles</small></div>
         <dl className="analysis-evidence-list">
           <Detail label="EMA alignment" value={formatEvidence(analysis.trend.emaAlignment)} tone={directionTone(analysis.trend.direction)} />
           <Detail label="MACD histogram" value={formatNumber(analysis.momentum.macd.histogram, 4)} tone={directionTone(analysis.momentum.macd.momentum)} />
+          <Detail label="ADX / +DI / -DI" value={`${formatNumber(analysis.indicators.adx.adx, 1)} / ${formatNumber(analysis.indicators.adx.plusDi, 1)} / ${formatNumber(analysis.indicators.adx.minusDi, 1)}`} tone={directionTone(analysis.indicators.adx.directionalBias)} />
           <Detail label="Stochastic K / D" value={`${formatNumber(analysis.momentum.stochastic.percentK, 1)} / ${formatNumber(analysis.momentum.stochastic.percentD, 1)}`} />
+          <Detail label="Bollinger upper / lower" value={`${formatPrice(analysis.indicators.bollingerBands.upper)} / ${formatPrice(analysis.indicators.bollingerBands.lower)}`} />
+          <Detail label="Broker tick activity" value={analysis.strategies?.flow.tickVolumeRatio === null || analysis.strategies?.flow.tickVolumeRatio === undefined ? "Unavailable" : `${analysis.strategies.flow.tickVolumeRatio.toFixed(2)}× · ${analysis.strategies.flow.direction}`} tone={directionTone(analysis.strategies?.flow.direction ?? "Neutral")} />
           <Detail label="Range vs average" value={`${formatNumber(analysis.volatility.currentRangeRelativeToAverage, 2)}×`} />
         </dl>
       </section>
+
+      {analysis.strategies ? (
+        <section className="analysis-section">
+          <div className="analysis-section-title"><span>Detected strategy setups</span><small>completed-candle engine</small></div>
+          <div className="strategy-setup-list">
+            {analysis.strategies.setups.slice(0, 16).map((setup, index) => (
+              <div key={`${setup.family}-${setup.strategy}-${index}`} data-direction={setup.direction.toLowerCase()}>
+                <strong>{setup.family} · {formatEvidence(setup.strategy)}</strong>
+                <span>{setup.direction} · {Math.round(setup.quality * 100)}%</span>
+                <small>{setup.evidence.slice(0, 2).join(" · ")}</small>
+              </div>
+            ))}
+            {analysis.strategies.setups.length === 0 ? <span className="analysis-muted">No completed-candle strategy setup is active.</span> : null}
+          </div>
+          <div className="ktr-level-grid">
+            {analysis.strategies.ktr.levels.map((level) => <span key={level.label}><b>{level.label}</b>{price.format(level.price)}</span>)}
+          </div>
+          <p className="analysis-method-note">OP/KTR: {analysis.strategies.ktr.method}. True bid/ask delta, footprint, exchange POC/VAH/VAL, SMT, and unvalidated wave/harmonic labels remain unavailable instead of being fabricated.</p>
+        </section>
+      ) : null}
 
       <section className="analysis-section">
         <div className="analysis-section-title"><span>Multi-timeframe context</span><small>{formatEvidence(multiTimeframe?.trendAlignment ?? "Unavailable")}</small></div>
@@ -692,4 +761,10 @@ function directionTone(direction: string) {
   if (direction === "Bearish") return "negative";
   if (direction === "Conflicting") return "warning";
   return "neutral";
+}
+function localSignalOutcome(signal: LocalSignalSnapshot): { label: string; tone: "win" | "loss" | "open" | "expired" } {
+  if (signal.status === "ACTIVE") return { label: "ACTIVE", tone: "open" };
+  if (signal.reason === "TARGET_REACHED") return { label: "WIN · TARGET", tone: "win" };
+  if (signal.reason === "EXPIRED") return { label: "EXPIRED · UNGRADED", tone: "expired" };
+  return { label: `LOSS · ${formatEvidence(signal.reason ?? "STOPPED")}`, tone: "loss" };
 }

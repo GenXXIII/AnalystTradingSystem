@@ -66,7 +66,13 @@ public sealed record TargetMarketFrameSnapshot(
     IReadOnlyList<decimal> ImportantLevels,
     IReadOnlyList<string> CandleSignals,
     IReadOnlyList<string> Conflicts,
-    int CandlesUsed);
+    int CandlesUsed)
+{
+    public IReadOnlyList<string> StrategySignals { get; init; } = [];
+    public IReadOnlyList<string> FlowSignals { get; init; } = [];
+    public IReadOnlyList<string> KtrLevels { get; init; } = [];
+    public IReadOnlyList<string> IndicatorSignals { get; init; } = [];
+}
 
 public sealed record TargetAnalysisSnapshot(
     string Symbol,

@@ -21,6 +21,7 @@ internal sealed class CandlestickAnalyzer : ICandlestickAnalyzer
         DetectSingleCandle(candles, timeframe, quality, patterns);
         DetectTwoCandle(candles, timeframe, averageRange, patterns);
         DetectThreeCandle(candles, timeframe, averageRange, patterns);
+        DetectRangeAndFailurePatterns(candles, timeframe, averageRange, patterns);
         return (quality, patterns);
     }
 
@@ -39,6 +40,16 @@ internal sealed class CandlestickAnalyzer : ICandlestickAnalyzer
                 "Body is at most 10% of candle range.");
         }
 
+        if (quality.Range > 0m
+            && quality.BodyToRangeRatio is > 0.10m and <= 0.30m
+            && quality.UpperWick >= quality.Body
+            && quality.LowerWick >= quality.Body)
+        {
+            Add(patterns, "SpinningTop", PatternDirection.Neutral, timeframe, candle,
+                Clamp(1m - quality.BodyToRangeRatio),
+                "Small body with meaningful upper and lower wicks.");
+        }
+
         var priorTrend = PriorTrend(candles);
         var smallUpper = quality.UpperWick <= effectiveBody;
         var smallLower = quality.LowerWick <= effectiveBody;
@@ -50,6 +61,9 @@ internal sealed class CandlestickAnalyzer : ICandlestickAnalyzer
                 Clamp(quality.LowerWick / Math.Max(quality.Range, 0.0000001m)),
                 "Lower wick is at least twice the body.",
                 "Upper wick is no larger than the body.");
+            Add(patterns, "BullishPinBar", PatternDirection.Bullish, timeframe, candle,
+                Clamp(quality.LowerWick / Math.Max(quality.Range, 0.0000001m)),
+                "Lower rejection wick is at least twice the effective body.");
         }
 
         if (quality.UpperWick >= effectiveBody * 2m && smallLower)
@@ -60,6 +74,9 @@ internal sealed class CandlestickAnalyzer : ICandlestickAnalyzer
                 Clamp(quality.UpperWick / Math.Max(quality.Range, 0.0000001m)),
                 "Upper wick is at least twice the body.",
                 "Lower wick is no larger than the body.");
+            Add(patterns, "BearishPinBar", PatternDirection.Bearish, timeframe, candle,
+                Clamp(quality.UpperWick / Math.Max(quality.Range, 0.0000001m)),
+                "Upper rejection wick is at least twice the effective body.");
         }
     }
 
@@ -98,6 +115,49 @@ internal sealed class CandlestickAnalyzer : ICandlestickAnalyzer
             Add(patterns, "BearishEngulfing", PatternDirection.Bearish, timeframe, current,
                 RelativeBodyQuality(current, previous),
                 "Bearish body contains the previous bullish body.");
+        }
+
+        if (previous.Close < previous.Open
+            && current.Close > current.Open
+            && currentBodyLow > previousBodyLow
+            && currentBodyHigh < previousBodyHigh)
+        {
+            Add(patterns, "BullishHarami", PatternDirection.Bullish, timeframe, current,
+                Clamp((previousBodyHigh - previousBodyLow) / Math.Max(averageRange, 0.0000001m)),
+                "Bullish body is contained inside the previous bearish body.");
+        }
+
+        if (previous.Close > previous.Open
+            && current.Close < current.Open
+            && currentBodyLow > previousBodyLow
+            && currentBodyHigh < previousBodyHigh)
+        {
+            Add(patterns, "BearishHarami", PatternDirection.Bearish, timeframe, current,
+                Clamp((previousBodyHigh - previousBodyLow) / Math.Max(averageRange, 0.0000001m)),
+                "Bearish body is contained inside the previous bullish body.");
+        }
+
+        var previousMidpoint = (previous.Open + previous.Close) / 2m;
+        if (previous.Close < previous.Open
+            && current.Close > current.Open
+            && current.Open <= previous.Close
+            && current.Close > previousMidpoint
+            && current.Close < previous.Open)
+        {
+            Add(patterns, "PiercingLine", PatternDirection.Bullish, timeframe, current,
+                RelativeBodyQuality(current, previous),
+                "Bullish close recovered beyond the previous bearish body midpoint.");
+        }
+
+        if (previous.Close > previous.Open
+            && current.Close < current.Open
+            && current.Open >= previous.Close
+            && current.Close < previousMidpoint
+            && current.Close > previous.Open)
+        {
+            Add(patterns, "DarkCloudCover", PatternDirection.Bearish, timeframe, current,
+                RelativeBodyQuality(current, previous),
+                "Bearish close crossed below the previous bullish body midpoint.");
         }
 
         if (current.High < previous.High && current.Low > previous.Low)
@@ -152,6 +212,64 @@ internal sealed class CandlestickAnalyzer : ICandlestickAnalyzer
             Add(patterns, "EveningStar", PatternDirection.Bearish, timeframe, last,
                 Clamp((firstBody + lastBody) / Math.Max(averageRange * 2m, 0.0000001m)),
                 "Bullish first candle, small middle body, bearish decline below first midpoint.");
+        }
+
+        var threeBullish = first.Close > first.Open && middle.Close > middle.Open && last.Close > last.Open
+            && middle.Close > first.Close && last.Close > middle.Close
+            && middle.Open >= first.Open && last.Open >= middle.Open;
+        if (threeBullish)
+        {
+            Add(patterns, "ThreeWhiteSoldiers", PatternDirection.Bullish, timeframe, last,
+                Clamp((firstBody + middleBody + lastBody) / Math.Max(averageRange * 3m, 0.0000001m)),
+                "Three consecutive bullish bodies closed progressively higher.");
+        }
+
+        var threeBearish = first.Close < first.Open && middle.Close < middle.Open && last.Close < last.Open
+            && middle.Close < first.Close && last.Close < middle.Close
+            && middle.Open <= first.Open && last.Open <= middle.Open;
+        if (threeBearish)
+        {
+            Add(patterns, "ThreeBlackCrows", PatternDirection.Bearish, timeframe, last,
+                Clamp((firstBody + middleBody + lastBody) / Math.Max(averageRange * 3m, 0.0000001m)),
+                "Three consecutive bearish bodies closed progressively lower.");
+        }
+    }
+
+    private static void DetectRangeAndFailurePatterns(
+        IReadOnlyList<StoredMarketCandle> candles,
+        MarketTimeframe timeframe,
+        decimal averageRange,
+        List<CandlestickPatternResult> patterns)
+    {
+        var latest = candles[^1];
+        var latestRange = latest.High - latest.Low;
+        foreach (var period in new[] { 4, 7 })
+        {
+            if (candles.Count < period) continue;
+            var window = candles.TakeLast(period).ToArray();
+            if (latestRange <= window.Min(candle => candle.High - candle.Low))
+            {
+                Add(patterns, $"NR{period}", PatternDirection.Neutral, timeframe, latest,
+                    Clamp(1m - latestRange / Math.Max(averageRange, 0.0000001m)),
+                    $"Latest candle has the narrowest range of the last {period} candles.");
+            }
+        }
+
+        if (candles.Count < 4) return;
+        var prior = candles.Skip(Math.Max(0, candles.Count - 13)).SkipLast(1).ToArray();
+        var priorHigh = prior.Max(candle => candle.High);
+        var priorLow = prior.Min(candle => candle.Low);
+        if (latest.High > priorHigh && latest.Close < priorHigh)
+        {
+            Add(patterns, "FailedBullishBreakout", PatternDirection.Bearish, timeframe, latest,
+                Clamp((latest.High - priorHigh) / Math.Max(latestRange, 0.0000001m)),
+                "Wick crossed the prior range high but the candle closed back inside.");
+        }
+        if (latest.Low < priorLow && latest.Close > priorLow)
+        {
+            Add(patterns, "FailedBearishBreakout", PatternDirection.Bullish, timeframe, latest,
+                Clamp((priorLow - latest.Low) / Math.Max(latestRange, 0.0000001m)),
+                "Wick crossed the prior range low but the candle closed back inside.");
         }
     }
 

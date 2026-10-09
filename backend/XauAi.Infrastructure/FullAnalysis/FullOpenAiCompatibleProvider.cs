@@ -27,7 +27,6 @@ internal sealed class FullOpenAiCompatibleProvider(
         CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
-        var isGroq = string.Equals(configuration.Provider, "Groq", StringComparison.OrdinalIgnoreCase);
         var models = ModelCandidates(configuration.Model, configuration.FallbackModels);
         var modelIndex = 0;
         for (var attempt = 0; ; attempt++)
@@ -49,9 +48,7 @@ internal sealed class FullOpenAiCompatibleProvider(
                         continue;
                     }
 
-                    if ((response.StatusCode == HttpStatusCode.TooManyRequests
-                            || IsTransient(response.StatusCode)
-                            || isGroq && response.StatusCode == HttpStatusCode.BadRequest)
+                    if (CanTryFallback(response.StatusCode)
                         && modelIndex < models.Count - 1)
                     {
                         modelIndex++;
@@ -64,6 +61,13 @@ internal sealed class FullOpenAiCompatibleProvider(
 
                 await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
                 using var document = await JsonDocument.ParseAsync(stream, cancellationToken: timeout.Token);
+                if (ReachedTokenLimit(document.RootElement))
+                {
+                    throw new FullAnalysisException(
+                        FullAnalysisErrorCodes.TokenLimit,
+                        "The Full AI model reached its output token limit.");
+                }
+
                 if (!TryGetContent(document.RootElement, out var content) || string.IsNullOrWhiteSpace(content))
                 {
                     throw new FullAnalysisException(
@@ -79,6 +83,14 @@ internal sealed class FullOpenAiCompatibleProvider(
                     checked((int)Math.Min(stopwatch.ElapsedMilliseconds, int.MaxValue)),
                     response.Headers.TryGetValues("x-request-id", out var values) ? values.FirstOrDefault() : null,
                     ReadModel(document.RootElement));
+            }
+            catch (FullAnalysisException exception) when (
+                CanRecoverWithFallback(exception.Code)
+                && modelIndex < models.Count - 1)
+            {
+                modelIndex++;
+                attempt = -1;
+                continue;
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
@@ -116,6 +128,13 @@ internal sealed class FullOpenAiCompatibleProvider(
             }
             catch (JsonException exception)
             {
+                if (modelIndex < models.Count - 1)
+                {
+                    modelIndex++;
+                    attempt = -1;
+                    continue;
+                }
+
                 throw new FullAnalysisException(FullAnalysisErrorCodes.InvalidResponse, "The Full AI provider returned malformed response JSON.", exception);
             }
         }
@@ -175,19 +194,19 @@ internal sealed class FullOpenAiCompatibleProvider(
     {
         var responsibility = request.Workspace switch
         {
-            FullWorkspace.Structure => "Analyze only multi-timeframe structure, HH/HL/LH/LL, BOS, CHoCH, trend, range, transition, strength, and invalidation.",
+            FullWorkspace.Structure => "Analyze only multi-timeframe HH/HL/LH/LL, BOS, CHoCH, Dow structure, supplied SMC/ICT structure, Wyckoff range phase, trend, transition, strength, and invalidation.",
             FullWorkspace.Liquidity => "Analyze only price-derived prior and equal highs/lows, swing liquidity, sweeps, reactions, attractions, and conflicts. Never claim order-book liquidity.",
-            FullWorkspace.Candle => "Analyze contextual rejection, engulfing, momentum, breakout, failure, continuation, exhaustion, reversal, location, structure, liquidity, and momentum. Never decide from a candle pattern alone.",
-            FullWorkspace.Flow => "Analyze price momentum, pressure, acceleration, deceleration, impulse, pullback, continuation, exhaustion, tick volume, and volatility. Never fabricate order flow.",
-            FullWorkspace.Ktr => "Analyze only supplied KTR definitions, important levels, previous and session levels, breakout/retest areas, volatility-adjusted levels, and reaction zones.",
+            FullWorkspace.Candle => "Analyze all supplied closed-candle features: engulfing, hammer/star, harami, piercing/dark cloud, soldiers/crows, doji/spinning top, pin bars, NR4/NR7, FVG/IFVG, rejection, displacement, breakout/failure/retest, continuation, exhaustion, reversal, and location. Never decide from a pattern alone.",
+            FullWorkspace.Flow => "Analyze broker tick-volume VSA, price/activity pressure proxy, acceleration, divergence, high-activity low-progress, breakout confirmation, exhaustion, spread/data quality, and session activity. Never claim true delta, CVD, footprint, absorption, or exchange volume profile unless explicitly supplied.",
+            FullWorkspace.Ktr => "Analyze only supplied OP and volatility-normalized KTR levels, support/resistance, previous and session levels, Fibonacci context, breakout/retest areas, and reaction zones. Never invent a level.",
             FullWorkspace.News => "Analyze economic, USD, macro, central-bank, financial-news, and attributed analyst evidence. Explicitly separate facts from interpretation.",
             FullWorkspace.Risk => "Evaluate volatility, regime, news risk, conflicts, invalidation, data quality, uncertainty, and abnormal conditions. Return insufficientEvidence=true with WAIT when appropriate.",
-            FullWorkspace.Master => "Synthesize by evidence quality, independence, freshness, relevance, conflict, data quality, and risk. Never count votes or force a direction.",
+            FullWorkspace.Master => "Synthesize by evidence quality, independence, freshness, relevance, conflict, data quality, and risk. Select the best defensible possibility without demanding perfect agreement; never decide by vote count.",
             _ => throw new ArgumentOutOfRangeException(nameof(request), request.Workspace, null)
         };
         var contract = request.Workspace == FullWorkspace.Master
-            ? "Return exactly BUY, SELL, or WAIT. BUY/SELL require cited evidence, two independent supporting workspaces, a validity deadline, and a directional price invalidation. WAIT must have no active deadline or price trigger."
-            : "Return a structured interpretation, not a final market decision. Use WAIT when this workspace has insufficient or conflicting evidence.";
+            ? "Return exactly BUY, SELL, or WAIT. Prefer the best evidence-backed BUY/SELL possibility when two independent workspaces and Risk make it defensible; perfect confluence is not required. BUY/SELL require cited evidence, two independent supporting workspaces, a validity deadline, and a directional price invalidation. Use WAIT only when neither direction is defensible; WAIT must have no active deadline or price trigger."
+            : "Return a structured interpretation, not a final market decision. Return a BUY/SELL directional lean when this workspace has a defensible evidence-backed possibility, even when some evidence conflicts; express that conflict through confidence and uncertainty. Use WAIT only when this workspace has no defensible directional lean or lacks usable evidence.";
         return $$"""
             You are the independent Full {{request.Workspace}} AI workspace for XAUUSD.
             {{responsibility}}
@@ -318,16 +337,34 @@ internal sealed class FullOpenAiCompatibleProvider(
             ? model.GetString()
             : null;
 
+    private static bool ReachedTokenLimit(JsonElement root) =>
+        root.TryGetProperty("choices", out var choices)
+        && choices.ValueKind == JsonValueKind.Array
+        && choices.GetArrayLength() > 0
+        && choices[0].TryGetProperty("finish_reason", out var finishReason)
+        && finishReason.ValueKind == JsonValueKind.String
+        && string.Equals(finishReason.GetString(), "length", StringComparison.OrdinalIgnoreCase);
+
     private static bool IsTransient(HttpStatusCode statusCode) =>
         statusCode == HttpStatusCode.RequestTimeout
         || (int)statusCode >= 500;
+
+    private static bool CanTryFallback(HttpStatusCode statusCode) =>
+        statusCode is not HttpStatusCode.Unauthorized and not HttpStatusCode.Forbidden;
+
+    private static bool CanRecoverWithFallback(string errorCode) => errorCode is
+        FullAnalysisErrorCodes.RateLimited
+        or FullAnalysisErrorCodes.Timeout
+        or FullAnalysisErrorCodes.TokenLimit
+        or FullAnalysisErrorCodes.InvalidResponse
+        or FullAnalysisErrorCodes.Unavailable;
 
     private static FullAnalysisException Failure(HttpStatusCode statusCode) => statusCode switch
     {
         HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new FullAnalysisException(
             FullAnalysisErrorCodes.AuthenticationFailed,
             "The Full AI provider rejected authentication."),
-        HttpStatusCode.TooManyRequests => new FullAnalysisException(
+        HttpStatusCode.TooManyRequests or HttpStatusCode.PaymentRequired => new FullAnalysisException(
             FullAnalysisErrorCodes.RateLimited,
             "The Full AI provider rate limit was reached."),
         HttpStatusCode.RequestTimeout or HttpStatusCode.GatewayTimeout => new FullAnalysisException(

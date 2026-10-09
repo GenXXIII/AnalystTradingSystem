@@ -58,3 +58,17 @@ public interface IVolatilityAnalyzer
         IndicatorSet indicators,
         TechnicalAnalysisSettings settings);
 }
+
+public interface IStrategyFeatureAnalyzer
+{
+    StrategyAnalysisResult Analyze(
+        IReadOnlyList<StoredMarketCandle> candles,
+        MarketTimeframe timeframe,
+        IndicatorSet indicators,
+        TrendAnalysisResult trend,
+        MarketStructureResult structure,
+        PriceActionResult priceAction,
+        VolatilityAnalysisResult volatility,
+        IReadOnlyList<SupportResistanceZone> levels,
+        IReadOnlyList<CandlestickPatternResult> patterns);
+}

@@ -39,60 +39,84 @@ internal sealed class TargetWorkspaceRunner(
                 $"The {request.Workspace} target AI workspace is disabled.");
         }
 
+        var models = ModelCandidates(configuration);
         string outputJson = "{}";
-        try
+        for (var modelIndex = 0; modelIndex < models.Count; modelIndex++)
         {
-            await requestGate.WaitAsync(
-                "Target",
-                configuration.Provider,
-                configuration.BaseUrl,
-                configuration.ApiKey,
-                configuration.RequestsPerMinute,
-                cancellationToken);
-            var completion = await providerFactory.Create(configuration.Adapter)
-                .AnalyzeAsync(request, configuration, cancellationToken);
-            var effectiveConfiguration = string.IsNullOrWhiteSpace(completion.Model)
-                ? configuration
-                : configuration with { Model = completion.Model };
-            outputJson = completion.Json;
-            var completedAt = timeProvider.GetUtcNow().ToUniversalTime();
-            var specialist = isMaster
-                ? null
-                : responseValidator.ValidateSpecialist(
-                    outputJson,
+            var attemptConfiguration = configuration with
+            {
+                Model = models[modelIndex],
+                FallbackModels = []
+            };
+            outputJson = "{}";
+            try
+            {
+                await requestGate.WaitAsync(
+                    "Target",
+                    attemptConfiguration.Provider,
+                    attemptConfiguration.BaseUrl,
+                    attemptConfiguration.ApiKey,
+                    attemptConfiguration.RequestsPerMinute,
+                    cancellationToken);
+                var completion = await providerFactory.Create(attemptConfiguration.Adapter)
+                    .AnalyzeAsync(request, attemptConfiguration, cancellationToken);
+                var effectiveConfiguration = configuration with
+                {
+                    Model = string.IsNullOrWhiteSpace(completion.Model)
+                        ? attemptConfiguration.Model
+                        : completion.Model
+                };
+                outputJson = completion.Json;
+                var completedAt = timeProvider.GetUtcNow().ToUniversalTime();
+                var specialist = isMaster
+                    ? null
+                    : responseValidator.ValidateSpecialist(
+                        outputJson,
+                        request.Workspace,
+                        request.EvidenceIds);
+                var master = isMaster
+                    ? responseValidator.ValidateMaster(outputJson, request.EvidenceIds)
+                    : null;
+                return new TargetWorkspaceRunResult(
+                    id,
                     request.Workspace,
-                    request.EvidenceIds);
-            var master = isMaster
-                ? responseValidator.ValidateMaster(outputJson, request.EvidenceIds)
-                : null;
-            return new TargetWorkspaceRunResult(
-                id,
-                request.Workspace,
-                TargetWorkspaceExecutionStatus.Completed,
-                specialist,
-                master,
-                outputJson,
-                effectiveConfiguration,
-                completion.InputTokens,
-                completion.OutputTokens,
-                completion.LatencyMilliseconds,
-                null,
-                null,
-                createdAt,
-                completedAt);
+                    TargetWorkspaceExecutionStatus.Completed,
+                    specialist,
+                    master,
+                    outputJson,
+                    effectiveConfiguration,
+                    completion.InputTokens,
+                    completion.OutputTokens,
+                    completion.LatencyMilliseconds,
+                    null,
+                    null,
+                    createdAt,
+                    completedAt);
+            }
+            catch (TargetAnalysisException exception)
+            {
+                if (CanRecoverWithAnotherModel(exception.Code) && modelIndex < models.Count - 1)
+                {
+                    continue;
+                }
+
+                var failedConfiguration = configuration with { Model = attemptConfiguration.Model };
+                var message = CanRecoverWithAnotherModel(exception.Code) && models.Count > 1
+                    ? $"{exception.SafeMessage} Automatic recovery exhausted {models.Count} configured models."
+                    : exception.SafeMessage;
+                return Failure(
+                    id,
+                    request.Workspace,
+                    TargetWorkspaceExecutionStatus.Failed,
+                    failedConfiguration,
+                    createdAt,
+                    exception.Code,
+                    message,
+                    outputJson);
+            }
         }
-        catch (TargetAnalysisException exception)
-        {
-            return Failure(
-                id,
-                request.Workspace,
-                TargetWorkspaceExecutionStatus.Failed,
-                configuration,
-                createdAt,
-                exception.Code,
-                exception.SafeMessage,
-                outputJson);
-        }
+
+        throw new InvalidOperationException("At least one Target AI model must be configured.");
     }
 
     private TargetWorkspaceRunResult Failure(
@@ -118,4 +142,17 @@ internal sealed class TargetWorkspaceRunner(
             message,
             createdAt,
             timeProvider.GetUtcNow().ToUniversalTime());
+
+    private static IReadOnlyList<string> ModelCandidates(TargetWorkspaceConfiguration configuration) =>
+        [.. new[] { configuration.Model }
+            .Concat(configuration.FallbackModels)
+            .Where(model => !string.IsNullOrWhiteSpace(model))
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
+
+    private static bool CanRecoverWithAnotherModel(string errorCode) => errorCode is
+        TargetAnalysisErrorCodes.RateLimited
+        or TargetAnalysisErrorCodes.Timeout
+        or TargetAnalysisErrorCodes.TokenLimit
+        or TargetAnalysisErrorCodes.InvalidResponse
+        or TargetAnalysisErrorCodes.Unavailable;
 }

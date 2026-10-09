@@ -49,16 +49,16 @@ export function TargetAnalystWorkspace({ timeframe, localStatus, onResultChange 
       try {
         const [active, recent, workspaces, providers] = await Promise.all([
           getActiveTargets(),
-          getTargetHistory(),
+          getTargetHistory(12, timeframe),
           getTargetWorkspaceConfiguration(),
           getTargetProviderStatuses(),
         ]);
         if (!cancelled) {
-          const selected = active.find((item) => item.timeframe === timeframe) ?? active[0] ?? null;
+          const selected = currentTargetResult(active, recent.items, timeframe);
           setHistory(recent.items);
           setConfiguration(workspaces);
           setProviderStatuses(providers);
-          setActiveResultId(selected?.id ?? null);
+          setActiveResultId(selected?.status === "Active" ? selected.id : null);
           setResult(selected);
           onResultChange?.(selected);
         }
@@ -76,8 +76,13 @@ export function TargetAnalystWorkspace({ timeframe, localStatus, onResultChange 
     let cancelled = false;
     const refreshActive = async () => {
       try {
-        const [active, providers] = await Promise.all([getActiveTargets(), getTargetProviderStatuses()]);
+        const [active, recent, providers] = await Promise.all([
+          getActiveTargets(),
+          getTargetHistory(12, timeframe),
+          getTargetProviderStatuses(),
+        ]);
         if (cancelled) return;
+        setHistory(recent.items);
         setProviderStatuses(providers);
         const selected = active.find((item) => item.timeframe === timeframe) ?? active[0] ?? null;
         setActiveResultId(selected?.id ?? null);
@@ -87,6 +92,10 @@ export function TargetAnalystWorkspace({ timeframe, localStatus, onResultChange 
         } else if (activeResultId) {
           setResult(null);
           onResultChange?.(null);
+        } else {
+          const persisted = persistentTargetDecision(recent.items[0] ?? null);
+          setResult(persisted);
+          onResultChange?.(persisted);
         }
       } catch {
         // Preserve the last known active result; the health panel reports connectivity failures.
@@ -106,6 +115,8 @@ export function TargetAnalystWorkspace({ timeframe, localStatus, onResultChange 
   async function runAnalysis() {
     setRunning(true);
     setError(null);
+    setResult(null);
+    onResultChange?.(null);
     try {
       const created = await createTargetAnalysis(timeframe);
       setResult(created);
@@ -220,7 +231,7 @@ export function TargetAnalystWorkspace({ timeframe, localStatus, onResultChange 
           <div className="analysis-section-title"><span>Target history</span><small>Preserved snapshots</small></div>
           <div>
             {history.map((item) => (
-              <button type="button" onClick={() => { setResult(item); onResultChange?.(item); }} aria-pressed={result?.id === item.id} key={item.id}>
+              <button type="button" onClick={() => { setResult(item); onResultChange?.(item.status === "Active" ? item : null); }} aria-pressed={result?.id === item.id} key={item.id}>
                 <strong className={`${targetTextTone(targetDirection(item))}-text`}>{item.targetPrice === null ? "No target" : formatPrice(item.targetPrice)}</strong>
                 <span>{item.timeframe}</span>
                 <time>{formatDate(item.analysisTimeUtc)}</time>
@@ -284,4 +295,18 @@ function message(error: unknown): string {
 function providerButtonLabel(status: AiProviderAccountStatus | null, fallback: string): string {
   if (!status) return fallback;
   return status.state === "QuotaExhausted" ? "Daily quota exhausted" : "AI provider unavailable";
+}
+
+function currentTargetResult(
+  active: TargetAnalysisResult[],
+  history: TargetAnalysisResult[],
+  timeframe: MarketTimeframeCode,
+): TargetAnalysisResult | null {
+  return active.find((item) => item.timeframe === timeframe)
+    ?? active[0]
+    ?? persistentTargetDecision(history[0] ?? null);
+}
+
+function persistentTargetDecision(result: TargetAnalysisResult | null): TargetAnalysisResult | null {
+  return result?.status === "NoValidTarget" ? result : null;
 }

@@ -121,6 +121,44 @@ public sealed class FullAnalysisTests
         Assert.Equal(1, provider.Calls);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Workspace_runner_replaces_model_after_invalid_output_or_token_limit(
+        bool primaryHitsTokenLimit)
+    {
+        var provider = new RecoveringStubProvider(
+            JsonSerializer.Serialize(Specialist(FullWorkspace.Ktr, FullDecision.Wait, []), Options),
+            primaryHitsTokenLimit);
+        var configuration = Configuration(FullWorkspace.Ktr) with
+        {
+            Model = "primary-model",
+            FallbackModels = ["fallback-model"]
+        };
+        var runner = new FullWorkspaceRunner(
+            new FullWorkspaceCatalog([configuration]),
+            new StubFactory(provider),
+            new FullAiResponseValidator(),
+            new XauAi.Application.AI.ScopedAiProviderRequestGate(TimeProvider.System),
+            new FullAnalystSettings { CacheMinutes = 5 },
+            TimeProvider.System);
+        var request = new FullAiRequest(
+            FullWorkspace.Ktr,
+            "XAUUSD",
+            "M5",
+            DateTimeOffset.UtcNow,
+            configuration.PromptVersion,
+            "fallback-state",
+            "{}",
+            []);
+
+        var result = await runner.RunSpecialistAsync(request);
+
+        Assert.Equal(FullWorkspaceExecutionStatus.Completed, result.Status);
+        Assert.Equal("fallback-model", result.Configuration.Model);
+        Assert.Equal(["primary-model", "fallback-model"], provider.Models);
+    }
+
     private static FullMasterOutput Master(FullDecision decision, Guid evidenceId) => new()
     {
         Decision = decision,
@@ -209,6 +247,31 @@ public sealed class FullAnalysisTests
         {
             Calls++;
             return Task.FromResult(new FullAiCompletion(json, 10, 20, 5, "test"));
+        }
+    }
+
+    private sealed class RecoveringStubProvider(
+        string fallbackJson,
+        bool primaryHitsTokenLimit) : IFullAiProvider
+    {
+        public string Adapter => "Stub";
+        public List<string> Models { get; } = [];
+
+        public Task<FullAiCompletion> AnalyzeAsync(
+            FullAiRequest request,
+            FullWorkspaceConfiguration configuration,
+            CancellationToken cancellationToken = default)
+        {
+            Models.Add(configuration.Model);
+            if (Models.Count == 1 && primaryHitsTokenLimit)
+            {
+                throw new FullAnalysisException(
+                    FullAnalysisErrorCodes.TokenLimit,
+                    "The primary model reached its output token limit.");
+            }
+
+            var json = Models.Count == 1 ? "{}" : fallbackJson;
+            return Task.FromResult(new FullAiCompletion(json, 10, 20, 5, "test", configuration.Model));
         }
     }
 }

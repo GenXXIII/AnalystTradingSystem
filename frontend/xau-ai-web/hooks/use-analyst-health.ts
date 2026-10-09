@@ -69,8 +69,19 @@ export function useAnalystHealth(enabled: boolean) {
 
   useEffect(() => {
     if (!enabled) return;
-    const timer = window.setTimeout(() => void refresh(), 0);
-    return () => window.clearTimeout(timer);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    const initialTimer = window.setTimeout(() => void refresh(), 0);
+    const refreshTimer = window.setInterval(() => void refresh(), 30_000);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [enabled, refresh]);
 
   return { snapshot, loading, error, refresh };

@@ -42,6 +42,9 @@ export interface TargetSpecialistResult {
   configurationVersion: string;
   errorCode: string | null;
   errorMessage: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  latencyMilliseconds: number | null;
   completedAtUtc: string | null;
 }
 
@@ -87,7 +90,10 @@ export interface TargetWorkspaceConfiguration {
   provider: string;
   adapter: string;
   model: string;
+  fallbackModels: string[];
   baseUrl: string;
+  maxOutputTokens: number;
+  requestsPerMinute: number;
   promptVersion: string;
   configurationVersion: string;
   hasApiKey: boolean;
@@ -117,8 +123,12 @@ export async function getActiveTargets(): Promise<TargetAnalysisResult[]> {
   return response.data;
 }
 
-export async function getTargetHistory(pageSize = 12): Promise<PagedTargetAnalyses> {
+export async function getTargetHistory(
+  pageSize = 12,
+  timeframe?: MarketTimeframeCode,
+): Promise<PagedTargetAnalyses> {
   const query = new URLSearchParams({ page: "1", pageSize: String(pageSize) });
+  if (timeframe) query.set("timeframe", timeframe);
   const response = await apiClient.get<ApiSuccessResponse<PagedTargetAnalyses>>(
     `/api/target-analyst/history/XAUUSD?${query.toString()}`,
   );

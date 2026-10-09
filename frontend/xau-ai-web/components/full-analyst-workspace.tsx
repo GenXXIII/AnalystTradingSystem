@@ -48,16 +48,16 @@ export function FullAnalystWorkspace({ timeframe, onResultChange }: Readonly<{
       try {
         const [active, recent, workspaces, providers] = await Promise.all([
           getActiveFullAnalyses(),
-          getFullAnalysisHistory(),
+          getFullAnalysisHistory(12, timeframe),
           getFullWorkspaceConfiguration(),
           getFullProviderStatuses(),
         ]);
         if (!cancelled) {
-          const selected = active.find((item) => item.timeframe === timeframe) ?? active[0] ?? null;
+          const selected = currentFullResult(active, recent.items, timeframe);
           setHistory(recent.items);
           setConfiguration(workspaces);
           setProviderStatuses(providers);
-          setActiveResultId(selected?.id ?? null);
+          setActiveResultId(selected?.status === "Active" ? selected.id : null);
           setResult(selected);
           onResultChange?.(selected);
         }
@@ -75,8 +75,13 @@ export function FullAnalystWorkspace({ timeframe, onResultChange }: Readonly<{
     let cancelled = false;
     const refreshActive = async () => {
       try {
-        const [active, providers] = await Promise.all([getActiveFullAnalyses(), getFullProviderStatuses()]);
+        const [active, recent, providers] = await Promise.all([
+          getActiveFullAnalyses(),
+          getFullAnalysisHistory(12, timeframe),
+          getFullProviderStatuses(),
+        ]);
         if (cancelled) return;
+        setHistory(recent.items);
         setProviderStatuses(providers);
         const selected = active.find((item) => item.timeframe === timeframe) ?? active[0] ?? null;
         setActiveResultId(selected?.id ?? null);
@@ -86,6 +91,10 @@ export function FullAnalystWorkspace({ timeframe, onResultChange }: Readonly<{
         } else if (activeResultId) {
           setResult(null);
           onResultChange?.(null);
+        } else {
+          const persisted = persistentFullDecision(recent.items[0] ?? null);
+          setResult(persisted);
+          onResultChange?.(persisted);
         }
       } catch {
         // Preserve the last known result; provider diagnostics remain available in health.
@@ -105,6 +114,8 @@ export function FullAnalystWorkspace({ timeframe, onResultChange }: Readonly<{
   async function runAnalysis() {
     setRunning(true);
     setError(null);
+    setResult(null);
+    onResultChange?.(null);
     try {
       const created = await createFullAnalysis(timeframe);
       setResult(created);
@@ -219,7 +230,7 @@ export function FullAnalystWorkspace({ timeframe, onResultChange }: Readonly<{
           <div className="analysis-section-title"><span>Future history</span><small>Preserved snapshots</small></div>
           <div>
             {history.map((item) => (
-              <button type="button" onClick={() => { setResult(item); onResultChange?.(item); }} aria-pressed={result?.id === item.id} key={item.id}>
+              <button type="button" onClick={() => { setResult(item); onResultChange?.(item.status === "Active" ? item : null); }} aria-pressed={result?.id === item.id} key={item.id}>
                 <strong className={`${decisionTextTone(item.decision)}-text`}>{item.decision}</strong>
                 <span>{item.timeframe}</span>
                 <time>{formatDate(item.analysisTimeUtc)}</time>
@@ -273,4 +284,18 @@ function message(error: unknown): string {
 function providerButtonLabel(status: AiProviderAccountStatus | null, fallback: string): string {
   if (!status) return fallback;
   return status.state === "QuotaExhausted" ? "Daily quota exhausted" : "AI provider unavailable";
+}
+
+function currentFullResult(
+  active: FullAnalysisResult[],
+  history: FullAnalysisResult[],
+  timeframe: MarketTimeframeCode,
+): FullAnalysisResult | null {
+  return active.find((item) => item.timeframe === timeframe)
+    ?? active[0]
+    ?? persistentFullDecision(history[0] ?? null);
+}
+
+function persistentFullDecision(result: FullAnalysisResult | null): FullAnalysisResult | null {
+  return result?.status === "Wait" ? result : null;
 }

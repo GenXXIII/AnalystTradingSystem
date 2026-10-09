@@ -8,7 +8,7 @@ internal static class TargetGenerationGate
     {
         var upward = snapshot.MarketFrames.Count(frame => IsAligned(frame, "Bullish"));
         var downward = snapshot.MarketFrames.Count(frame => IsAligned(frame, "Bearish"));
-        if (Math.Max(upward, downward) < 2 || upward == downward)
+        if (Math.Max(upward, downward) < 1)
         {
             return false;
         }
@@ -19,9 +19,9 @@ internal static class TargetGenerationGate
             return true;
         }
 
-        return upward > downward
-            ? local.State == LocalSignalState.Buy
-            : local.State == LocalSignalState.Sell;
+        return local.State == LocalSignalState.Buy
+            ? upward >= 1 && upward >= downward
+            : downward >= 1 && downward >= upward;
     }
 
     public static TargetDirectionContext? CandidateDirection(

@@ -142,7 +142,7 @@ internal sealed class TargetAnalystService(
                 id,
                 "DETERMINISTIC_GATE_NO_CANDIDATE",
                 "No AI calls were made because the completed multi-timeframe snapshot had no aligned directional candidate.",
-                "Wait for at least two aligned trend-and-structure timeframes before generating again.",
+                "Wait for at least one timeframe with aligned trend and structure before generating again.",
                 [],
                 cancellationToken);
         }
@@ -162,7 +162,7 @@ internal sealed class TargetAnalystService(
                 cancellationToken);
         }
 
-        var coreTasks = CoreWorkspaces.Select(workspace => workspaceRunner.RunSpecialistAsync(
+        var specialistTasks = SpecialistWorkspaces.Select(workspace => workspaceRunner.RunSpecialistAsync(
             new TargetAiRequest(
                 workspace,
                 symbol,
@@ -172,52 +172,15 @@ internal sealed class TargetAnalystService(
                 BuildSpecialistPayload(workspace, context),
                 context.Evidence[workspace].Compressed.EvidenceIds),
             cancellationToken));
-        var runs = (await Task.WhenAll(coreTasks)).ToList();
-        var scoutDirection = TargetGenerationGate.CandidateDirection(runs, settings.MinimumConfidence, 2);
-        if (scoutDirection is null)
-        {
-            runs.Add(await workspaceRunner.RunSpecialistAsync(
-                new TargetAiRequest(
-                    TargetWorkspace.Ktr,
-                    symbol,
-                    timeframe.Code(),
-                    analysisTime,
-                    workspaceCatalog.Get(TargetWorkspace.Ktr).PromptVersion,
-                    BuildSpecialistPayload(TargetWorkspace.Ktr, context),
-                    context.Evidence[TargetWorkspace.Ktr].Compressed.EvidenceIds),
-                cancellationToken));
-            scoutDirection = TargetGenerationGate.CandidateDirection(runs, settings.MinimumConfidence, 2);
-        }
-        if (scoutDirection is null)
-        {
-            return await NoTargetAsync(
-                id,
-                "SCOUT_GATE_NO_CANDIDATE",
-                "The low-cost core scouts did not independently confirm one target direction.",
-                "Risk, supporting specialists, and Master were skipped to protect the token budget.",
-                runs,
-                cancellationToken);
-        }
-
-        var supportingTasks = SupportingWorkspaces.Select(workspace => workspaceRunner.RunSpecialistAsync(
-            new TargetAiRequest(
-                workspace,
-                symbol,
-                timeframe.Code(),
-                analysisTime,
-                workspaceCatalog.Get(workspace).PromptVersion,
-                BuildSpecialistPayload(workspace, context),
-                context.Evidence[workspace].Compressed.EvidenceIds),
-            cancellationToken));
-        runs.AddRange(await Task.WhenAll(supportingTasks));
-        if (TargetGenerationGate.CandidateDirection(runs, settings.MinimumConfidence, 3) is not { } confirmedDirection
-            || confirmedDirection != scoutDirection)
+        var runs = (await Task.WhenAll(specialistTasks)).ToList();
+        var candidateConfidence = Math.Max(0m, settings.MinimumConfidence - 0.10m);
+        if (TargetGenerationGate.CandidateDirection(runs, candidateConfidence, 2) is null)
         {
             return await NoTargetAsync(
                 id,
                 "SPECIALIST_GATE_NO_CANDIDATE",
-                "The broader specialist set did not preserve the core scouts' direction.",
-                "Risk and Master were skipped because confirmation was weak or conflicting.",
+                "The complete Target specialist set did not find two independent evidence-backed candidates in one direction.",
+                "No target was retained because no defensible target possibility survived total-evidence confirmation.",
                 runs,
                 cancellationToken);
         }
@@ -655,7 +618,15 @@ internal sealed class TargetAnalystService(
                 [.. analysis.SupportResistance.Take(12).Select(level => level.Center)],
                 [.. analysis.CandlestickPatterns.TakeLast(8).Select(pattern => $"{pattern.Pattern}:{pattern.Direction}")],
                 [.. analysis.Conflicts],
-                analysis.Diagnostics.CandlesUsed);
+                analysis.Diagnostics.CandlesUsed)
+            {
+                StrategySignals = [.. analysis.Strategies?.Setups.Take(16)
+                    .Select(setup => $"{setup.Family}:{setup.Strategy}:{setup.Direction}:{setup.State}:{setup.Quality:F2}") ?? []],
+                FlowSignals = analysis.Strategies is null ? [] : [.. analysis.Strategies.Flow.Evidence.Take(10)],
+                KtrLevels = analysis.Strategies is null ? [] : [.. analysis.Strategies.Ktr.Levels
+                    .Select(level => $"{level.Label}:{level.Price:F3}")],
+                IndicatorSignals = IndicatorSignals(analysis)
+            };
         }).ToArray();
         if (frames.Length < settings.MinimumMarketTimeframes)
         {
@@ -668,7 +639,7 @@ internal sealed class TargetAnalystService(
             .Select(package => package.Selection.EvidenceVersion)
             .Order(StringComparer.Ordinal)));
         var marketVersion = Hash(string.Join('|', frames.Select(frame =>
-            $"{frame.Timeframe}:{frame.LastCandleCloseTimeUtc:O}:{frame.Open}:{frame.High}:{frame.Low}:{frame.Close}:{frame.TickVolume}")));
+            $"{frame.Timeframe}:{frame.LastCandleCloseTimeUtc:O}:{frame.Open}:{frame.High}:{frame.Low}:{frame.Close}:{frame.TickVolume}:{string.Join(',', frame.StrategySignals)}")));
         var configurationVersion = Hash(string.Join('|', Enum.GetValues<TargetWorkspace>().Select(workspace =>
             $"{workspace}:{workspaceCatalog.Get(workspace).ConfigurationVersion}:{workspaceCatalog.Get(workspace).PromptVersion}")));
         var localVersion = localSignal is null
@@ -689,7 +660,7 @@ internal sealed class TargetAnalystService(
             new Dictionary<string, string>
             {
                 ["evidence"] = evidenceVersion,
-                ["technicalAnalysis"] = "phase6-v1",
+                ["technicalAnalysis"] = "phase6-strategy-v2",
                 ["localAnalyst"] = localSignal?.ConfigurationVersion ?? "unavailable",
                 ["marketSnapshot"] = marketVersion,
                 ["state"] = stateHash
@@ -798,6 +769,10 @@ internal sealed class TargetAnalystService(
             frame.Atr,
             importantLevels = frame.ImportantLevels.Take(8),
             candleSignals = frame.CandleSignals.Take(6),
+            strategySignals = frame.StrategySignals.Take(12),
+            flowSignals = frame.FlowSignals.Take(8),
+            ktrLevels = frame.KtrLevels.Take(7),
+            indicatorSignals = frame.IndicatorSignals.Take(10),
             conflicts = frame.Conflicts.Take(4)
         }),
         conflicts = snapshot.Conflicts.Take(8),
@@ -976,6 +951,17 @@ internal sealed class TargetAnalystService(
         TargetWorkspace.Master => AiSpecialist.Master,
         _ => throw new ArgumentOutOfRangeException(nameof(workspace), workspace, null)
     };
+
+    private static IReadOnlyList<string> IndicatorSignals(TechnicalAnalysisResult analysis) =>
+    [
+        $"RSI:{analysis.Indicators.Rsi.Value:F2}:{analysis.Indicators.Rsi.Zone}:{analysis.Indicators.Rsi.Momentum}",
+        $"MACD:{analysis.Indicators.Macd.Macd:F3}:{analysis.Indicators.Macd.Signal:F3}:{analysis.Indicators.Macd.Histogram:F3}:{analysis.Indicators.Macd.Momentum}",
+        $"ADX:{analysis.Indicators.Adx.Adx:F2}:{analysis.Indicators.Adx.Strength}:{analysis.Indicators.Adx.DirectionalBias}",
+        $"ATR:{analysis.Indicators.Atr.Value:F3}:{analysis.Volatility.Regime}",
+        $"Bollinger:{analysis.Indicators.BollingerBands.Lower:F3}:{analysis.Indicators.BollingerBands.Middle:F3}:{analysis.Indicators.BollingerBands.Upper:F3}:PercentB={analysis.Indicators.BollingerBands.PercentB:F3}",
+        $"Stochastic:{analysis.Indicators.Stochastic.PercentK:F2}:{analysis.Indicators.Stochastic.PercentD:F2}:{analysis.Indicators.Stochastic.Zone}:{analysis.Indicators.Stochastic.Crossover}",
+        $"EMA:{analysis.Trend.EmaAlignment}:{analysis.Trend.PriceVsEma}"
+    ];
 
     private static int TimeframeRank(MarketTimeframe timeframe) => timeframe switch
     {

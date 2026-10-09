@@ -162,7 +162,7 @@ public sealed class LocalAnalystServiceTests
     }
 
     [Fact]
-    public async Task Active_setup_stops_when_its_directional_confluence_falls_below_the_entry_threshold()
+    public async Task Active_setup_remains_open_when_directional_confluence_temporarily_weakens()
     {
         var candles = Candles();
         var active = Snapshot(
@@ -182,9 +182,10 @@ public sealed class LocalAnalystServiceTests
 
         var result = await service.EvaluateAsync("XAUUSD", MarketTimeframe.M5);
 
-        Assert.Equal(LocalSignalMutation.Stop, store.LastRequest!.Mutation);
-        Assert.Equal(LocalSignalState.Stop, result.State);
-        Assert.Equal("BUY_CONFLUENCE_LOST", result.Reason);
+        Assert.Equal(LocalSignalMutation.Update, store.LastRequest!.Mutation);
+        Assert.Equal(LocalSignalState.Buy, result.State);
+        Assert.Equal(1m, result.Score);
+        Assert.Null(result.Reason);
     }
 
     private static LocalAnalystService CreateService(

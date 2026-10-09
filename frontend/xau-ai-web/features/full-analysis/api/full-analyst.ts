@@ -31,9 +31,16 @@ export interface FullWorkspaceRunResult {
   workspace: FullWorkspace;
   status: "Completed" | "Failed" | "Disabled" | "Cached";
   specialistOutput: FullSpecialistOutput | null;
+  configuration: {
+    provider: string;
+    model: string;
+    fallbackModels: string[];
+  };
   cacheHit: boolean;
   inputTokens: number | null;
   outputTokens: number | null;
+  latencyMilliseconds: number | null;
+  errorCode: string | null;
   errorMessage: string | null;
 }
 
@@ -80,7 +87,10 @@ export interface FullWorkspaceConfiguration {
   provider: string;
   adapter: string;
   model: string;
+  fallbackModels: string[];
   baseUrl: string;
+  maxOutputTokens: number;
+  requestsPerMinute: number;
   promptVersion: string;
   configurationVersion: string;
   hasApiKey: boolean;
@@ -108,8 +118,12 @@ export async function getActiveFullAnalyses(): Promise<FullAnalysisResult[]> {
   return response.data;
 }
 
-export async function getFullAnalysisHistory(pageSize = 12): Promise<PagedFullAnalyses> {
+export async function getFullAnalysisHistory(
+  pageSize = 12,
+  timeframe?: MarketTimeframeCode,
+): Promise<PagedFullAnalyses> {
   const query = new URLSearchParams({ page: "1", pageSize: String(pageSize) });
+  if (timeframe) query.set("timeframe", timeframe);
   const response = await apiClient.get<ApiSuccessResponse<PagedFullAnalyses>>(
     `/api/full-analyst/history/XAUUSD?${query.toString()}`,
   );

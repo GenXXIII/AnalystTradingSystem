@@ -129,7 +129,7 @@ internal sealed class FullAnalystService(
             return await WaitAsync(
                 id,
                 "No AI calls were made because the completed multi-timeframe snapshot had no aligned directional candidate.",
-                "Wait for at least two aligned trend-and-structure timeframes before generating again.",
+                "Wait for at least one timeframe with aligned trend and structure before generating again.",
                 [],
                 cancellationToken);
         }
@@ -148,7 +148,7 @@ internal sealed class FullAnalystService(
                 cancellationToken);
         }
 
-        var specialistRuns = await Task.WhenAll(CoreWorkspaces.Select(workspace =>
+        var specialistRuns = await Task.WhenAll(SpecialistWorkspaces.Select(workspace =>
             workspaceRunner.RunSpecialistAsync(
                 new FullAiRequest(
                     workspace,
@@ -161,80 +161,13 @@ internal sealed class FullAnalystService(
                     context.Evidence[workspace].Compressed.EvidenceIds),
                 cancellationToken)));
         var runs = specialistRuns.ToList();
-        if (runs.Any(run => run.Status is FullWorkspaceExecutionStatus.Failed or FullWorkspaceExecutionStatus.Disabled))
+        var candidateConfidence = Math.Max(0m, settings.MinimumConfidence - 0.10m);
+        if (FullGenerationGate.CandidateDirection(runs, candidateConfidence, 2) is null)
         {
             return await WaitAsync(
                 id,
-                "One or more Full AI specialists were unavailable.",
-                "A directional state was not forced from an incomplete specialist set.",
-                runs,
-                cancellationToken);
-        }
-        var scoutDirection = FullGenerationGate.CandidateDirection(runs, settings.MinimumConfidence, 2);
-        if (scoutDirection is null)
-        {
-            var tieBreaker = await workspaceRunner.RunSpecialistAsync(
-                new FullAiRequest(
-                    FullWorkspace.Ktr,
-                    symbol,
-                    timeframe.Code(),
-                    analysisTime,
-                    workspaceCatalog.Get(FullWorkspace.Ktr).PromptVersion,
-                    context.StateHash,
-                    BuildSpecialistPayload(FullWorkspace.Ktr, context),
-                    context.Evidence[FullWorkspace.Ktr].Compressed.EvidenceIds),
-                cancellationToken);
-            runs.Add(tieBreaker);
-            if (tieBreaker.Status is FullWorkspaceExecutionStatus.Failed or FullWorkspaceExecutionStatus.Disabled)
-            {
-                return await WaitAsync(
-                    id,
-                    "The KTR tie-breaker was unavailable.",
-                    "Supporting specialists, Risk, and Master were skipped rather than forcing a direction.",
-                    runs,
-                    cancellationToken);
-            }
-            scoutDirection = FullGenerationGate.CandidateDirection(runs, settings.MinimumConfidence, 2);
-        }
-        if (scoutDirection is null)
-        {
-            return await WaitAsync(
-                id,
-                "The low-cost core scouts did not independently confirm one future direction.",
-                "Supporting specialists, Risk, and Master were skipped to protect the token budget.",
-                runs,
-                cancellationToken);
-        }
-
-        var supportingRuns = await Task.WhenAll(SupportingWorkspaces.Select(workspace =>
-            workspaceRunner.RunSpecialistAsync(
-                new FullAiRequest(
-                    workspace,
-                    symbol,
-                    timeframe.Code(),
-                    analysisTime,
-                    workspaceCatalog.Get(workspace).PromptVersion,
-                    context.StateHash,
-                    BuildSpecialistPayload(workspace, context),
-                    context.Evidence[workspace].Compressed.EvidenceIds),
-                cancellationToken)));
-        runs.AddRange(supportingRuns);
-        if (runs.Any(run => run.Status is FullWorkspaceExecutionStatus.Failed or FullWorkspaceExecutionStatus.Disabled))
-        {
-            return await WaitAsync(
-                id,
-                "One or more supporting Future AI specialists were unavailable.",
-                "Risk and Master were skipped rather than forcing a direction from an incomplete set.",
-                runs,
-                cancellationToken);
-        }
-        if (FullGenerationGate.CandidateDirection(runs, settings.MinimumConfidence, 3) is not { } confirmedDirection
-            || confirmedDirection != scoutDirection)
-        {
-            return await WaitAsync(
-                id,
-                "The broader specialist set did not preserve the core scouts' direction.",
-                "Risk and Master were skipped because confirmation was weak or conflicting.",
+                "The complete Future specialist set did not find two independent evidence-backed signals in one direction.",
+                "WAIT was retained because no defensible BUY or SELL possibility survived total-evidence confirmation.",
                 runs,
                 cancellationToken);
         }
@@ -575,7 +508,15 @@ internal sealed class FullAnalystService(
                 [.. analysis.SupportResistance.Take(12).Select(level => level.Center)],
                 [.. analysis.CandlestickPatterns.TakeLast(8).Select(pattern => $"{pattern.Pattern}:{pattern.Direction}")],
                 [.. analysis.Conflicts],
-                analysis.Diagnostics.CandlesUsed);
+                analysis.Diagnostics.CandlesUsed)
+            {
+                StrategySignals = [.. analysis.Strategies?.Setups.Take(16)
+                    .Select(setup => $"{setup.Family}:{setup.Strategy}:{setup.Direction}:{setup.State}:{setup.Quality:F2}") ?? []],
+                FlowSignals = analysis.Strategies is null ? [] : [.. analysis.Strategies.Flow.Evidence.Take(10)],
+                KtrLevels = analysis.Strategies is null ? [] : [.. analysis.Strategies.Ktr.Levels
+                    .Select(level => $"{level.Label}:{level.Price:F3}")],
+                IndicatorSignals = IndicatorSignals(analysis)
+            };
         }).ToArray();
         if (frames.Length < settings.MinimumMarketTimeframes)
         {
@@ -586,7 +527,7 @@ internal sealed class FullAnalystService(
             .Select(package => package.Selection.EvidenceVersion)
             .Order(StringComparer.Ordinal)));
         var marketVersion = Hash(string.Join('|', frames.Select(frame =>
-            $"{frame.Timeframe}:{frame.LastCandleCloseTimeUtc:O}:{frame.Open}:{frame.High}:{frame.Low}:{frame.Close}:{frame.TickVolume}")));
+            $"{frame.Timeframe}:{frame.LastCandleCloseTimeUtc:O}:{frame.Open}:{frame.High}:{frame.Low}:{frame.Close}:{frame.TickVolume}:{string.Join(',', frame.StrategySignals)}")));
         var configurationVersion = Hash(string.Join('|', Enum.GetValues<FullWorkspace>().Select(workspace =>
             $"{workspace}:{workspaceCatalog.Get(workspace).ConfigurationVersion}:{workspaceCatalog.Get(workspace).PromptVersion}")));
         var stateHash = Hash($"{symbol}|{requestedTimeframe}|{marketVersion}|{evidenceVersion}|{configurationVersion}");
@@ -601,7 +542,7 @@ internal sealed class FullAnalystService(
             new Dictionary<string, string>
             {
                 ["evidence"] = evidenceVersion,
-                ["technicalAnalysis"] = "phase6-v1",
+                ["technicalAnalysis"] = "phase6-strategy-v2",
                 ["marketSnapshot"] = marketVersion,
                 ["state"] = stateHash
             },
@@ -693,6 +634,10 @@ internal sealed class FullAnalystService(
             frame.Atr,
             importantLevels = frame.ImportantLevels.Take(8),
             candleSignals = frame.CandleSignals.Take(6),
+            strategySignals = frame.StrategySignals.Take(12),
+            flowSignals = frame.FlowSignals.Take(8),
+            ktrLevels = frame.KtrLevels.Take(7),
+            indicatorSignals = frame.IndicatorSignals.Take(10),
             conflicts = frame.Conflicts.Take(4)
         }),
         conflicts = snapshot.Conflicts.Take(8)
@@ -837,16 +782,27 @@ internal sealed class FullAnalystService(
 
     private static string Scope(FullWorkspace workspace) => workspace switch
     {
-        FullWorkspace.Structure => "HH, HL, LH, LL, BOS, CHoCH, trend, range, transition, strength, and structural invalidation.",
+        FullWorkspace.Structure => "HH, HL, LH, LL, BOS, CHoCH, Dow structure, SMC/ICT structure, Wyckoff range phase, trend, transition, strength, and structural invalidation.",
         FullWorkspace.Liquidity => "Price-derived highs, lows, equal levels, swing pools, sweeps, rejection, attraction, and conflicts; never order-book claims.",
-        FullWorkspace.Candle => "Contextual rejection, engulfing, momentum, breakout, failure, continuation, exhaustion, and reversal.",
-        FullWorkspace.Flow => "Price momentum, directional pressure, acceleration, impulse, pullback, tick volume, volatility, and exhaustion; never fabricated order flow.",
-        FullWorkspace.Ktr => "Only supplied KTR, important price and session levels, breakouts, retests, volatility-adjusted levels, and reaction zones.",
+        FullWorkspace.Candle => "All supplied closed-candle features: engulfing, hammer/star, harami, piercing/dark cloud, soldiers/crows, doji/spinning top, pin bars, NR4/NR7, FVG/IFVG, rejection, displacement, breakout/failure/retest, continuation, exhaustion, and reversal in context.",
+        FullWorkspace.Flow => "Broker tick-volume VSA, price/activity pressure proxy, acceleration, divergence, high-activity low-progress, breakout confirmation, exhaustion, spread/data quality, and session activity; never fabricate delta, CVD, footprint, or exchange volume profile.",
+        FullWorkspace.Ktr => "Only supplied OP and volatility-normalized KTR levels, support/resistance, previous and session levels, breakouts, retests, Fibonacci context, and reaction zones.",
         FullWorkspace.News => "Economic, USD, macro, central-bank, news, and attributed analyst evidence with facts separated from interpretation.",
         FullWorkspace.Risk => "Volatility, regime, news risk, conflicts, invalidation, data quality, uncertainty, and abnormal conditions.",
         FullWorkspace.Master => "Evidence-weighted synthesis without majority voting.",
         _ => throw new ArgumentOutOfRangeException(nameof(workspace), workspace, null)
     };
+
+    private static IReadOnlyList<string> IndicatorSignals(TechnicalAnalysisResult analysis) =>
+    [
+        $"RSI:{analysis.Indicators.Rsi.Value:F2}:{analysis.Indicators.Rsi.Zone}:{analysis.Indicators.Rsi.Momentum}",
+        $"MACD:{analysis.Indicators.Macd.Macd:F3}:{analysis.Indicators.Macd.Signal:F3}:{analysis.Indicators.Macd.Histogram:F3}:{analysis.Indicators.Macd.Momentum}",
+        $"ADX:{analysis.Indicators.Adx.Adx:F2}:{analysis.Indicators.Adx.Strength}:{analysis.Indicators.Adx.DirectionalBias}",
+        $"ATR:{analysis.Indicators.Atr.Value:F3}:{analysis.Volatility.Regime}",
+        $"Bollinger:{analysis.Indicators.BollingerBands.Lower:F3}:{analysis.Indicators.BollingerBands.Middle:F3}:{analysis.Indicators.BollingerBands.Upper:F3}:PercentB={analysis.Indicators.BollingerBands.PercentB:F3}",
+        $"Stochastic:{analysis.Indicators.Stochastic.PercentK:F2}:{analysis.Indicators.Stochastic.PercentD:F2}:{analysis.Indicators.Stochastic.Zone}:{analysis.Indicators.Stochastic.Crossover}",
+        $"EMA:{analysis.Trend.EmaAlignment}:{analysis.Trend.PriceVsEma}"
+    ];
 
     private static AiSpecialist ToAiSpecialist(FullWorkspace workspace) => workspace switch
     {

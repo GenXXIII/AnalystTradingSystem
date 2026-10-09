@@ -76,6 +76,58 @@ export interface VolatilityAnalysis {
   evidence: string[];
 }
 
+export interface IndicatorSet {
+  sma: IndicatorValue[];
+  ema: IndicatorValue[];
+  rsi: RsiAnalysis;
+  macd: MacdAnalysis;
+  atr: VolatilityAnalysis["atr"];
+  adx: {
+    period: number;
+    adx: number | null;
+    plusDi: number | null;
+    minusDi: number | null;
+    strength: string;
+    directionalBias: AnalyticalDirection;
+    readiness: AnalysisReadiness;
+  };
+  bollingerBands: VolatilityAnalysis["bollingerBands"];
+  stochastic: MomentumAnalysis["stochastic"];
+}
+
+export interface StrategySetup {
+  family: string;
+  strategy: string;
+  direction: AnalyticalDirection;
+  state: string;
+  quality: number;
+  evidence: string[];
+}
+
+export interface StrategyAnalysis {
+  setups: StrategySetup[];
+  flow: {
+    dataMethod: string;
+    trueBidAskDeltaAvailable: boolean;
+    tickVolumeRatio: number | null;
+    directionalPressure: number | null;
+    direction: AnalyticalDirection;
+    divergence: string;
+    absorptionCandidate: boolean;
+    exhaustionCandidate: boolean;
+    breakoutConfirmed: boolean;
+    evidence: string[];
+  };
+  ktr: {
+    openingPrice: number;
+    unit: number;
+    method: string;
+    levels: Array<{ label: string; price: number; multiple: number }>;
+  };
+  coveredFamilies: string[];
+  unavailableCapabilities: string[];
+}
+
 export interface TechnicalAnalysis {
   symbol: string;
   timeframe: MarketTimeframeCode;
@@ -108,6 +160,8 @@ export interface TechnicalAnalysis {
     quality: number;
     supportingConditions: string[];
   }>;
+  indicators: IndicatorSet;
+  strategies: StrategyAnalysis | null;
   conflicts: string[];
   diagnostics: {
     durationMilliseconds: number;

@@ -20,7 +20,7 @@ public sealed class LocalAnalystOptions
 
     public int MaximumAllowedGaps { get; set; } = 30;
 
-    public decimal EntryScoreThreshold { get; set; } = 4m;
+    public decimal EntryScoreThreshold { get; set; } = 3m;
 
     public decimal MinimumDirectionalLead { get; set; } = 2m;
 
@@ -56,7 +56,7 @@ public sealed class LocalAnalystOptions
 
     public decimal ImportantLevelDistanceAtr { get; set; } = 0.5m;
 
-    public string ValidityCandles { get; set; } = "M1:15,M5:12,M15:8,M30:6,H1:5,H4:4,D1:3";
+    public string ValidityCandles { get; set; } = "M1:120,M5:72,M15:32,M30:24,H1:12,H4:8,D1:5";
 
-    public string ConfigurationVersion { get; set; } = "phase12-v3";
+    public string ConfigurationVersion { get; set; } = "phase12-v5";
 }

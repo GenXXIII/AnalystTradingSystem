@@ -11,7 +11,7 @@ internal static class FullGenerationGate
 
         var buy = snapshot.MarketFrames.Count(frame => IsAligned(frame, "Bullish"));
         var sell = snapshot.MarketFrames.Count(frame => IsAligned(frame, "Bearish"));
-        return Math.Max(buy, sell) >= 2 && buy != sell;
+        return Math.Max(buy, sell) >= 1;
     }
 
     public static FullDecision? CandidateDirection(

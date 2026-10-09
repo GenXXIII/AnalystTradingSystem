@@ -20,7 +20,7 @@ public sealed class LocalAnalystSettings
 
     public int MaximumAllowedGaps { get; init; } = 30;
 
-    public decimal EntryScoreThreshold { get; init; } = 4m;
+    public decimal EntryScoreThreshold { get; init; } = 3m;
 
     public decimal MinimumDirectionalLead { get; init; } = 2m;
 
@@ -56,18 +56,18 @@ public sealed class LocalAnalystSettings
 
     public decimal ImportantLevelDistanceAtr { get; init; } = 0.5m;
 
-    public string ConfigurationVersion { get; init; } = "phase12-v3";
+    public string ConfigurationVersion { get; init; } = "phase12-v5";
 
     public IReadOnlyDictionary<MarketTimeframe, int> ValidityCandles { get; init; } =
         new Dictionary<MarketTimeframe, int>
         {
-            [MarketTimeframe.M1] = 15,
-            [MarketTimeframe.M5] = 12,
-            [MarketTimeframe.M15] = 8,
-            [MarketTimeframe.M30] = 6,
-            [MarketTimeframe.H1] = 5,
-            [MarketTimeframe.H4] = 4,
-            [MarketTimeframe.D1] = 3
+            [MarketTimeframe.M1] = 120,
+            [MarketTimeframe.M5] = 72,
+            [MarketTimeframe.M15] = 32,
+            [MarketTimeframe.M30] = 24,
+            [MarketTimeframe.H1] = 12,
+            [MarketTimeframe.H4] = 8,
+            [MarketTimeframe.D1] = 5
         };
 
     public decimal MaximumScore => StructureWeight + TrendWeight + LiquidityWeight

@@ -70,6 +70,7 @@ public sealed class FullAiProviderTests
     [Theory]
     [InlineData(HttpStatusCode.TooManyRequests)]
     [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.RequestEntityTooLarge)]
     public async Task Groq_request_uses_supported_fields_and_advances_to_fallback(HttpStatusCode firstStatus)
     {
         var bodies = new List<string>();

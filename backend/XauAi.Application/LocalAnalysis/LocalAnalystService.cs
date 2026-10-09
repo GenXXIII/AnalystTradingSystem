@@ -277,11 +277,6 @@ internal sealed class LocalAnalystService(
                 return "OPPOSING_SELL_CONFLUENCE";
             }
 
-            var supporting = decision.Conditions.Where(condition => condition.LongMatched).Sum(condition => condition.Weight);
-            if (supporting < settings.EntryScoreThreshold)
-            {
-                return "BUY_CONFLUENCE_LOST";
-            }
         }
         else if (active.OriginDirection == LocalSignalState.Sell)
         {
@@ -301,11 +296,6 @@ internal sealed class LocalAnalystService(
                 return "OPPOSING_BUY_CONFLUENCE";
             }
 
-            var supporting = decision.Conditions.Where(condition => condition.ShortMatched).Sum(condition => condition.Weight);
-            if (supporting < settings.EntryScoreThreshold)
-            {
-                return "SELL_CONFLUENCE_LOST";
-            }
         }
 
         return null;

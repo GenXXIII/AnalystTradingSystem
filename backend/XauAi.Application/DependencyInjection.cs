@@ -41,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<ISupportResistanceAnalyzer, SupportResistanceAnalyzer>();
         services.AddScoped<IPriceActionAnalyzer, PriceActionAnalyzer>();
         services.AddScoped<IVolatilityAnalyzer, VolatilityAnalyzer>();
+        services.AddScoped<IStrategyFeatureAnalyzer, StrategyFeatureAnalyzer>();
         services.AddScoped<ITechnicalAnalysisService, TechnicalAnalysisService>();
         services.AddSingleton<ILocalSignalEngine, LocalSignalEngine>();
         services.AddScoped<ILocalAnalystService, LocalAnalystService>();

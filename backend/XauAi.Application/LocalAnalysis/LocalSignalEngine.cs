@@ -108,7 +108,8 @@ internal sealed class LocalSignalEngine(LocalAnalystSettings settings) : ILocalS
             brokeHigh || analysis.MarketStructure.Direction == AnalyticalDirection.Bullish,
             brokeLow || analysis.MarketStructure.Direction == AnalyticalDirection.Bearish,
             settings.StructureWeight,
-            [$"SwingSequence:{analysis.MarketStructure.Structure}", $"Readiness:{analysis.MarketStructure.Readiness}"]);
+            [$"SwingSequence:{analysis.MarketStructure.Structure}", $"Readiness:{analysis.MarketStructure.Readiness}",
+                .. StrategyEvidence(analysis, "SMC/ICT", "DowTheory")]);
     }
 
     private LocalSignalCondition TrendCondition(TechnicalAnalysisResult analysis)
@@ -166,6 +167,7 @@ internal sealed class LocalSignalEngine(LocalAnalystSettings settings) : ILocalS
             $"PreviousSessionLow:{previousSessionLow:F3}",
             "DerivedFromPriceOnly:True"
         };
+        evidence.AddRange(StrategyEvidence(analysis, "SMC/ICT", "Wyckoff"));
         return new LocalSignalCondition("Liquidity", state, bullish, bearish, settings.LiquidityWeight, evidence);
     }
 
@@ -178,12 +180,18 @@ internal sealed class LocalSignalEngine(LocalAnalystSettings settings) : ILocalS
         var latestPatterns = analysis.CandlestickPatterns
             .Where(pattern => pattern.CandleTimeUtc == latest.OpenTimeUtc)
             .ToArray();
+        var contextualSetups = analysis.Strategies?.Setups
+            .Where(setup => setup.Family is "Candlestick" or "ClassicalPriceAction" or "SMC/ICT" or "Wyckoff")
+            .Where(setup => setup.Quality >= 0.55m)
+            .ToArray() ?? [];
         var rawBullish = latest.Close > latest.Open
             && (latestPatterns.Any(pattern => pattern.Direction == PatternDirection.Bullish)
+                || contextualSetups.Any(setup => setup.Direction == AnalyticalDirection.Bullish)
                 || analysis.PriceAction.BullishRejection
                 || analysis.PriceAction.MomentumCandle);
         var rawBearish = latest.Close < latest.Open
             && (latestPatterns.Any(pattern => pattern.Direction == PatternDirection.Bearish)
+                || contextualSetups.Any(setup => setup.Direction == AnalyticalDirection.Bearish)
                 || analysis.PriceAction.BearishRejection
                 || analysis.PriceAction.MomentumCandle);
         var bullish = rawBullish && (structure.LongMatched || trend.LongMatched);
@@ -199,6 +207,7 @@ internal sealed class LocalSignalEngine(LocalAnalystSettings settings) : ILocalS
             bearish,
             settings.CandleWeight,
             [.. latestPatterns.Select(pattern => $"{pattern.Pattern}:{pattern.Direction}"),
+                .. contextualSetups.Take(8).Select(setup => $"{setup.Family}:{setup.Strategy}:{setup.Direction}:{setup.State}"),
                 $"MomentumCandle:{analysis.PriceAction.MomentumCandle}"]);
     }
 
@@ -218,12 +227,15 @@ internal sealed class LocalSignalEngine(LocalAnalystSettings settings) : ILocalS
             && recent[^1].TickVolume.HasValue
             && recent[^2].TickVolume.HasValue
             && recent[^1].TickVolume >= recent[^2].TickVolume;
-        var bullish = rsi.Value > settings.RsiBullishMinimum && rsi.Value < settings.RsiBullishMaximum
+        var flow = analysis.Strategies?.Flow;
+        var bullishFlow = flow is { Direction: AnalyticalDirection.Bullish, TickVolumeRatio: >= 0.8m } && rising;
+        var bearishFlow = flow is { Direction: AnalyticalDirection.Bearish, TickVolumeRatio: >= 0.8m } && falling;
+        var bullish = (rsi.Value > settings.RsiBullishMinimum && rsi.Value < settings.RsiBullishMaximum
             && macd.Momentum == AnalyticalDirection.Bullish
-            && (rising || accelerating);
-        var bearish = rsi.Value > settings.RsiBearishMinimum && rsi.Value < settings.RsiBearishMaximum
+            && (rising || accelerating)) || bullishFlow;
+        var bearish = (rsi.Value > settings.RsiBearishMinimum && rsi.Value < settings.RsiBearishMaximum
             && macd.Momentum == AnalyticalDirection.Bearish
-            && (falling || accelerating);
+            && (falling || accelerating)) || bearishFlow;
         var state = bullish ? accelerating ? "BullishAccelerating" : "Bullish"
             : bearish ? accelerating ? "BearishAccelerating" : "Bearish"
             : rising || falling ? "DirectionalUnconfirmed"
@@ -237,6 +249,10 @@ internal sealed class LocalSignalEngine(LocalAnalystSettings settings) : ILocalS
             [$"Rsi:{rsi.Value:F2}/{rsi.Momentum}", $"Macd:{macd.Momentum}",
                 $"PriceRising:{rising}", $"PriceFalling:{falling}",
                 $"BodyAccelerating:{accelerating}", $"TickVolumeConfirms:{volumeConfirmation}",
+                $"FlowMethod:{flow?.DataMethod ?? "Unavailable"}",
+                $"TickVolumeRatio:{flow?.TickVolumeRatio:F3}",
+                $"FlowDirection:{flow?.Direction.ToString() ?? "Unavailable"}",
+                $"FlowDivergence:{flow?.Divergence ?? "Unavailable"}",
                 "OrderBookClaimed:False"]);
     }
 
@@ -256,8 +272,11 @@ internal sealed class LocalSignalEngine(LocalAnalystSettings settings) : ILocalS
             .FirstOrDefault();
         var nearSupport = support is not null && Math.Abs(latest.Close - support.Center) <= distance;
         var nearResistance = resistance is not null && Math.Abs(latest.Close - resistance.Center) <= distance;
-        var bullish = nearSupport && latest.Close > latest.Open || analysis.PriceAction.BreakoutAboveRecentRange;
-        var bearish = nearResistance && latest.Close < latest.Open || analysis.PriceAction.BreakoutBelowRecentRange;
+        var ktr = analysis.Strategies?.Ktr;
+        var nearestKtr = ktr?.Levels.OrderBy(level => Math.Abs(level.Price - latest.Close)).FirstOrDefault();
+        var nearKtr = nearestKtr is not null && Math.Abs(latest.Close - nearestKtr.Price) <= distance;
+        var bullish = (nearSupport || nearKtr) && latest.Close > latest.Open || analysis.PriceAction.BreakoutAboveRecentRange;
+        var bearish = (nearResistance || nearKtr) && latest.Close < latest.Open || analysis.PriceAction.BreakoutBelowRecentRange;
         var state = analysis.PriceAction.BreakoutAboveRecentRange ? "BreakoutAboveImportantRange"
             : analysis.PriceAction.BreakoutBelowRecentRange ? "BreakoutBelowImportantRange"
             : bullish ? "SupportReaction"
@@ -270,6 +289,8 @@ internal sealed class LocalSignalEngine(LocalAnalystSettings settings) : ILocalS
             bearish,
             settings.KtrWeight,
             [$"NearestSupport:{support?.Center:F3}", $"NearestResistance:{resistance?.Center:F3}",
+                $"OpeningPrice:{ktr?.OpeningPrice:F3}", $"KtrUnit:{ktr?.Unit:F3}",
+                $"NearestKtr:{nearestKtr?.Label}:{nearestKtr?.Price:F3}",
                 $"DistanceTolerance:{distance:F3}"]);
     }
 
@@ -314,4 +335,13 @@ internal sealed class LocalSignalEngine(LocalAnalystSettings settings) : ILocalS
 
     private static string BuildCandleId(string symbol, MarketTimeframe timeframe, DateTimeOffset openTimeUtc) =>
         $"{symbol.ToUpperInvariant()}-{timeframe.Code()}-{openTimeUtc.ToUniversalTime():yyyyMMddHHmmss}";
+
+    private static IEnumerable<string> StrategyEvidence(
+        TechnicalAnalysisResult analysis,
+        params string[] families) =>
+        analysis.Strategies?.Setups
+            .Where(setup => families.Contains(setup.Family, StringComparer.Ordinal))
+            .Take(8)
+            .Select(setup => $"{setup.Family}:{setup.Strategy}:{setup.Direction}:{setup.State}")
+        ?? [];
 }
